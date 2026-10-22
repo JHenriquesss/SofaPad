@@ -1,0 +1,41 @@
+# Android e Gradle
+.gradle/
+**/build/
+local.properties
+.idea/
+*.iml
+.cxx/
+.externalNativeBuild/
+
+# Rust e empacotamento local
+target/
+dist/
+artifacts/
+*.apk
+*.aab
+*.exe
+*.msi
+*.pdb
+
+# Assinatura e credenciais locais
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.key
+*.pem
+keystore.properties
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+pairing-data/
+
+# Memória e dados da máquina
+.ai-memory/
+.ai-memory.toml
+*.log
+Thumbs.db
+Desktop.ini
+.DS_Store
