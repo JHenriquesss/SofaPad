@@ -1,0 +1,17 @@
+[
+  {"v":2,"type":"ping","seq":1},
+  {"v":1,"type":"ping","seq":0},
+  {"v":1,"type":"ping","seq":-1},
+  {"v":1,"type":"ping","seq":9007199254740992},
+  {"v":1,"type":"shell","seq":1,"command":"whoami"},
+  {"v":1,"type":"mouse_move","seq":1,"dx":2049,"dy":0},
+  {"v":1,"type":"mouse_move","seq":1,"dx":"8","dy":0},
+  {"v":1,"type":"mouse_move","seq":1,"dx":0},
+  {"v":1,"type":"mouse_button","seq":1,"button":"middle","state":"down"},
+  {"v":1,"type":"mouse_scroll","seq":1,"vertical":121},
+  {"v":1,"type":"shortcut","seq":1,"name":"WIN_R"},
+  {"v":1,"type":"text_insert","seq":1,"text":"teste","enter":true},
+  {"v":1,"type":"ping","seq":1,"text":"campo inesperado"},
+  {"type":"ping","seq":1},
+  {"v":1,"type":"ping"}
+]

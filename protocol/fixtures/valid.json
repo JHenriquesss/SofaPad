@@ -1,0 +1,21 @@
+[
+  {"v":1,"type":"mouse_move","seq":1,"dx":8.2,"dy":-3.7},
+  {"v":1,"type":"mouse_button","seq":2,"button":"left","state":"down"},
+  {"v":1,"type":"mouse_button","seq":3,"button":"left","state":"up"},
+  {"v":1,"type":"mouse_button","seq":4,"button":"right","state":"down"},
+  {"v":1,"type":"mouse_button","seq":5,"button":"right","state":"up"},
+  {"v":1,"type":"mouse_scroll","seq":6,"vertical":-2.0},
+  {"v":1,"type":"text_insert","seq":7,"text":"Olá, ação! 😀"},
+  {"v":1,"type":"shortcut","seq":8,"name":"ALT_TAB"},
+  {"v":1,"type":"shortcut","seq":9,"name":"CTRL_C"},
+  {"v":1,"type":"shortcut","seq":10,"name":"CTRL_V"},
+  {"v":1,"type":"shortcut","seq":11,"name":"CTRL_A"},
+  {"v":1,"type":"shortcut","seq":12,"name":"ENTER"},
+  {"v":1,"type":"shortcut","seq":13,"name":"ESC"},
+  {"v":1,"type":"shortcut","seq":14,"name":"BACKSPACE"},
+  {"v":1,"type":"media","seq":15,"name":"PLAY_PAUSE"},
+  {"v":1,"type":"media","seq":16,"name":"VOLUME_UP"},
+  {"v":1,"type":"media","seq":17,"name":"VOLUME_DOWN"},
+  {"v":1,"type":"release_all","seq":18},
+  {"v":1,"type":"ping","seq":19}
+]

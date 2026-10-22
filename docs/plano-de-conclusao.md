@@ -1,10 +1,10 @@
 # Plano de conclusão
 
-Avaliação inicial em 22/10/2026. A fonte dos requisitos permanece sendo `ESPECIFICACAO.md`.
+Avaliação inicial em 22/10/2026, atualizada durante a Etapa A. A fonte dos requisitos permanece sendo `ESPECIFICACAO.md`.
 
 ## Diagnóstico
 
-O produto tem objetivo, layout e escopo v1 bem definidos. O conteúdo inicial contém cinco arquivos: instruções, especificação, apresentação, prompt e protótipo HTML. Não há implementação Kotlin/Rust, manifestos, testes ou builds.
+O produto tem objetivo, layout e escopo v1 bem definidos. O conteúdo inicial continha cinco arquivos: instruções, especificação, apresentação, prompt e protótipo HTML. A Etapa A acrescenta projetos Kotlin/Compose e Rust, fixtures compartilhadas, testes e comandos de build. O controle do Windows continua pendente; o Android e o agente são simuladores independentes nesta etapa.
 
 A recomendação é manter as tecnologias e o escopo definidos e entregar incrementos pequenos, cada um com um resultado executável. Não há evidência para estimar uma data de conclusão antes do primeiro build e do primeiro teste entre celular e PC.
 
@@ -37,9 +37,9 @@ Assim que a base compilar, priorizar um fluxo completo: abrir o app no celular d
 - Windows com Rust/Cargo 1.96.0 e target `x86_64-pc-windows-msvc` instalado. Isso ainda não valida o linker nem um build do agente.
 - Microsoft OpenJDK 17.0.16 instalado.
 - Android SDK com plataformas API 33, 34, 35 e 36 e ferramentas ADB instaladas; SDK localizado fora do PATH padrão desta sessão.
-- `adb devices` executado: nenhum dispositivo listado.
+- Nenhum celular físico disponível via ADB; a Etapa A foi validada em emulador Android 16/API 36.
 - ai-memory consultado: nenhuma página consolidada relevante encontrada para SofaPad/Couch Remote.
-- Nenhum build ou teste do aplicativo executado: os projetos ainda não existem.
+- A implementação da Etapa A já gera APK debug e executável Rust release. Resultados de validação ficam em `docs/validacao-etapa-a.md`.
 
 ## Como reduzir o prazo
 

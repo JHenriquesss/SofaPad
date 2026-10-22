@@ -6,6 +6,9 @@
 *.rs text eol=lf
 *.toml text eol=lf
 *.json text eol=lf
+*.xml text eol=lf
+*.properties text eol=lf
+*.lock text eol=lf
 *.yml text eol=lf
 *.yaml text eol=lf
 *.sh text eol=lf
