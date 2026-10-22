@@ -12,7 +12,7 @@ import javax.net.ssl.X509TrustManager
 import kotlinx.serialization.json.*
 import okhttp3.*
 
-class ConnectionSettings(val host: String, val port: Int, val fingerprint: String, val token: String) {
+class ConnectionSettings(val host: String, val port: Int, val fingerprint: String, val token: String, val stableIdentity: Boolean = false) {
     init {
         require(host.matches(Regex("[0-9.]+")) && host.split('.').size == 4)
         val ip = InetAddress.getByName(host)
@@ -21,8 +21,27 @@ class ConnectionSettings(val host: String, val port: Int, val fingerprint: Strin
         require(fingerprint.matches(Regex("[a-fA-F0-9]{64}")))
         require(token.matches(Regex("[a-fA-F0-9]{64}")))
     }
-    val url: String get() = "wss://$host:$port/v1/control"
+    val url: String get() = "wss://${if (stableIdentity) "sofapad.local" else host}:$port/v1/control"
+    fun at(host: String, port: Int) = ConnectionSettings(host, port, fingerprint, token, stableIdentity)
     override fun toString() = "ConnectionSettings(redacted)"
+}
+
+fun pinnedClient(config: ConnectionSettings): OkHttpClient {
+    val trust = PinnedTrust(config.fingerprint.lowercase())
+    val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
+    val builder = OkHttpClient.Builder().sslSocketFactory(ssl.socketFactory, trust)
+        .proxy(java.net.Proxy.NO_PROXY)
+        .connectTimeout(3, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS)
+        .retryOnConnectionFailure(false)
+    // A identidade DNS do certificado permanece estável quando o IP do PC muda.
+    // O verificador de hostname padrão e o pin SHA-256 continuam obrigatórios.
+    if (config.stableIdentity) builder.dns(object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            require(hostname == "sofapad.local")
+            return listOf(InetAddress.getByName(config.host))
+        }
+    })
+    return builder.build()
 }
 
 class PinnedTrust(private val fingerprint: String) : X509TrustManager {
@@ -124,18 +143,14 @@ class RemoteConnection(
         discard(); sequence = 0
         client?.dispatcher?.executorService?.shutdown()
         client?.connectionPool?.evictAll()
-        val trust = PinnedTrust(config.fingerprint.lowercase())
-        val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
-        val http = OkHttpClient.Builder().sslSocketFactory(ssl.socketFactory, trust)
-            .connectTimeout(3, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS)
-            .retryOnConnectionFailure(false).build()
+        val http = pinnedClient(config)
         client = http
         openedAt = System.nanoTime()
         update(if (retries == 0) LinkState.CONNECTING else LinkState.RECONNECTING)
         val request = Request.Builder().url(config.url).header("Authorization", "Bearer ${config.token.lowercase()}").build()
         socket = http.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) { post { if (generation == current) runCatching { receive(text) }.onFailure { fail(true) } } }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { post { if (generation == current) fail(t is SSLHandshakeException || response?.code in listOf(401,403)) } }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { post { if (generation == current) fail(t is SSLHandshakeException || t is javax.net.ssl.SSLPeerUnverifiedException || response?.code in listOf(401,403)) } }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { post { if (generation == current) fail(false) } }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
         })

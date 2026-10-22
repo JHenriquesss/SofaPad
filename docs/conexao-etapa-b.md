@@ -1,5 +1,7 @@
 # Conexão de desenvolvimento — Etapa B
 
+Documento histórico da versão 0.2.0. Para o app atual, use [pareamento persistente da Etapa C](uso-domestico.md). A interface de autorização temporária descrita abaixo foi substituída no Android.
+
 A implementação já contém entrada real `SendInput`, cliente Android WSS, reconexão e descoberta. O teste local confirmou Unicode e liberação de arrasto em uma janela Win32 própria. A validação completa em celular físico e Wi-Fi doméstico ainda está pendente. Esta versão não substitui a instalação doméstica da Etapa C.
 
 ## Autorizar uma sessão no PC

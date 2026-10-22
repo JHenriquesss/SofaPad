@@ -2,9 +2,9 @@
 
 Controle remoto de um PC Windows pelo celular Android, na mesma rede Wi-Fi, com touchpad, botões de mouse, digitação e atalhos.
 
-**Estado atual: Etapa B — implementação de controle real para desenvolvimento.** Há app Android Kotlin/Compose, entrada Windows via `SendInput`, WSS com autorização temporária, descoberta e reconexão. A validação em celular físico ainda está pendente; não é a versão doméstica pronta. O HTML continua sendo apenas referência visual.
+**Estado atual: implementação da Etapa C, em validação.** App Android Kotlin/Compose, controle Windows real via `SendInput`, WSS, pareamento confirmado no PC, credenciais protegidas, revogação, bandeja e opção de início após login. O aceite em celular físico e os testes de reinício/Wi-Fi continuam pendentes. O HTML é apenas referência visual.
 
-O produto funciona sem contas, nuvem ou transmissão de tela. Pareamento persistente, revogação individual, bandeja e inicialização após login continuam para a Etapa C.
+Funciona sem contas, nuvem ou transmissão de tela. O agente guarda a identidade e os aparelhos autorizados com Windows DPAPI; o Android protege a autorização com Keystore/AES-GCM. O primeiro pareamento exige conferir a identidade do PC, um código de uso único e a confirmação no Windows.
 
 ## Conteúdo
 
@@ -12,6 +12,8 @@ O produto funciona sem contas, nuvem ou transmissão de tela. Pareamento persist
 - [Protótipo visual](prototipo_layout.html): abra o arquivo no navegador para experimentar os layouts e ações simuladas.
 - [Plano de conclusão](docs/plano-de-conclusao.md): avaliação inicial, prioridades e verificações por etapa.
 - [Build e instalação de desenvolvimento](docs/instalacao.md).
+- [Como usar e parear](docs/uso-domestico.md).
+- [Segurança e validação da Etapa C](docs/validacao-etapa-c.md).
 - [Conectar celular e PC na Etapa B](docs/conexao-etapa-b.md).
 - [Testes manuais](docs/testes-manuais.md).
 - [Resultados da Etapa A](docs/validacao-etapa-a.md): 29 testes aprovados e limites da entrega.
@@ -23,7 +25,7 @@ O produto funciona sem contas, nuvem ou transmissão de tela. Pareamento persist
 
 ## Compilar e experimentar
 
-O app abre em Controle, inclui Digitar com IME nativo e Configurações persistidas em DataStore. Abre em simulação; nas configurações, é possível conectar a uma sessão real autorizada no PC. O agente simula por padrão e só habilita `SendInput` com `--control IP_LOCAL:PORTA`, confirmação local e cliente autenticado sobre TLS. Não grava credenciais ou texto digitado em arquivos/logs.
+O app abre em Controle: sem PC salvo, mostra simulação; após parear, tenta conectar automaticamente. Digitar usa IME nativo; preferências ficam no DataStore. No Windows, executar o agente sem argumentos abre a bandeja e aguarda aparelhos autorizados. `--simulate` mantém a simulação de loopback para desenvolvimento. O agente não registra texto digitado nem tokens em logs; credenciais em disco são protegidas.
 
 No Windows, com Rust/Build Tools, JDK 17 e Android SDK 36 configurados:
 

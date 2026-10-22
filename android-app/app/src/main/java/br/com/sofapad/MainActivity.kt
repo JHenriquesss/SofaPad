@@ -15,9 +15,11 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val simulator: Simulator by viewModels()
+    private var discovery: PcDiscovery? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        simulator.loadCredentials(applicationContext)
         enableEdgeToEdge()
         setContent {
             val repository = remember { PreferencesRepository(applicationContext) }
@@ -39,6 +41,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
+        discovery?.close(); discovery = null
         simulator.pause()
         super.onStop()
     }
@@ -46,5 +49,6 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         simulator.resume()
+        discovery = PcDiscovery(applicationContext) { simulator.discovered(it) }.also { it.start() }
     }
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use sofapad_agent::{
     input::SimulatedInput,
     server::{bind_loopback, serve_connection},
@@ -6,6 +8,18 @@ use std::net::{Ipv4Addr, SocketAddr};
 
 fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    #[cfg(windows)]
+    if args.is_empty() || args.as_slice() == ["--household"] {
+        if let Err(error) = sofapad_agent::household::start() {
+            sofapad_agent::platform::dialog(
+                &format!("Não foi possível iniciar o SofaPad: {error}"),
+                windows_sys::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONERROR,
+            );
+            return Err(error);
+        }
+        return Ok(());
+    }
     if args.first().map(String::as_str) == Some("--control") {
         let address = args
             .get(1)
@@ -24,9 +38,9 @@ fn main() -> std::io::Result<()> {
             ));
         }
     }
-    if !args.is_empty() {
+    if !args.is_empty() && args.as_slice() != ["--simulate"] {
         println!(
-            "SofaPad: sem argumentos = simulação loopback; --control IP_LOCAL:49375 = controle WSS autorizado por sessão."
+            "SofaPad: sem argumentos ou --household = bandeja e pareamento persistente no Windows; --simulate = simulação loopback; --control IP_LOCAL:49375 = sessão temporária de desenvolvimento."
         );
         return Ok(());
     }

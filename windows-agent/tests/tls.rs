@@ -147,3 +147,128 @@ fn unknown_certificate_cannot_establish_control() {
     );
     worker.join().unwrap();
 }
+
+fn connect_persistent(
+    address: SocketAddr,
+    certificate: &[u8],
+    path: &str,
+    secret: &str,
+) -> Result<
+    tungstenite::WebSocket<StreamOwned<ClientConnection, TcpStream>>,
+    Box<dyn std::error::Error>,
+> {
+    let mut roots = RootCertStore::empty();
+    roots
+        .add(CertificateDer::from(certificate.to_vec()))
+        .unwrap();
+    let config = ClientConfig::builder()
+        .with_root_certificates(roots)
+        .with_no_client_auth();
+    let connection =
+        ClientConnection::new(Arc::new(config), "sofapad.local".try_into().unwrap()).unwrap();
+    let stream = TcpStream::connect(address).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    let mut request = format!("wss://sofapad.local:{}{path}", address.port())
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("authorization", format!("Bearer {secret}").parse().unwrap());
+    tungstenite::client(request, StreamOwned::new(connection, stream))
+        .map(|(socket, _)| socket)
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+}
+
+#[test]
+fn one_time_pairing_cannot_control_and_revocation_releases_active_drag() {
+    let vault = Arc::new(
+        sofapad_agent::pairing::Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| true))
+            .unwrap(),
+    );
+    let identity = vault.identity().unwrap();
+    let certificate = identity.certificate.clone();
+    let code = vault.open_window().unwrap();
+    let listener = bind_private("127.0.0.1:0".parse().unwrap()).unwrap();
+    let address = listener.local_addr().unwrap();
+    let input = Arc::new(Mutex::new(SimulatedInput::default()));
+    let shared = input.clone();
+    let access = Access::persistent(vault.clone());
+    let worker = thread::spawn(move || {
+        for _ in 0..4 {
+            serve_tls(
+                listener.accept().unwrap().0,
+                Shared(shared.clone()),
+                identity.config.clone(),
+                &access,
+            );
+        }
+    });
+    assert!(connect_persistent(address, &certificate, "/v1/control", &code).is_err());
+    let mut pair = connect_persistent(address, &certificate, "/v1/pair", &code).unwrap();
+    pair.send(Message::text(
+        r#"{"v":1,"type":"pair","name":"Celular de teste"}"#,
+    ))
+    .unwrap();
+    let response: serde_json::Value =
+        serde_json::from_str(pair.read().unwrap().to_text().unwrap()).unwrap();
+    assert_eq!(response["type"], "paired");
+    let token = response["token"].as_str().unwrap();
+    let _ = pair.close(None);
+    drop(pair);
+    assert!(connect_persistent(address, &certificate, "/v1/pair", &code).is_err());
+    let mut control = connect_persistent(address, &certificate, "/v1/control", token).unwrap();
+    control.read().unwrap();
+    control
+        .send(Message::text(
+            r#"{"v":1,"type":"mouse_button","seq":1,"button":"left","state":"down"}"#,
+        ))
+        .unwrap();
+    control.read().unwrap();
+    assert!(input.lock().unwrap().left_down);
+    vault.revoke(&vault.devices()[0].0).unwrap();
+    control
+        .send(Message::text(
+            r#"{"v":1,"type":"mouse_move","seq":2,"dx":10,"dy":0}"#,
+        ))
+        .unwrap();
+    let _ = control.read();
+    drop(control);
+    worker.join().unwrap();
+    let state = input.lock().unwrap();
+    assert_eq!(state.applied, 1);
+    assert!(!state.left_down);
+}
+
+#[test]
+fn declined_pc_confirmation_never_creates_a_credential() {
+    let vault = Arc::new(
+        sofapad_agent::pairing::Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| false))
+            .unwrap(),
+    );
+    let identity = vault.identity().unwrap();
+    let certificate = identity.certificate.clone();
+    let code = vault.open_window().unwrap();
+    let listener = bind_private("127.0.0.1:0".parse().unwrap()).unwrap();
+    let address = listener.local_addr().unwrap();
+    let access = Access::persistent(vault.clone());
+    let worker = thread::spawn(move || {
+        serve_tls(
+            listener.accept().unwrap().0,
+            SimulatedInput::default(),
+            identity.config,
+            &access,
+        );
+    });
+    let mut socket = connect_persistent(address, &certificate, "/v1/pair", &code).unwrap();
+    socket
+        .send(Message::text(
+            r#"{"v":1,"type":"pair","name":"Celular recusado"}"#,
+        ))
+        .unwrap();
+    assert!(!matches!(socket.read(), Ok(Message::Text(_))));
+    drop(socket);
+    worker.join().unwrap();
+    assert!(vault.devices().is_empty());
+}

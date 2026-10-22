@@ -60,40 +60,67 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
         .max_write_buffer_size(MAX_MESSAGE_BYTES * 2)
         .max_message_size(Some(MAX_MESSAGE_BYTES))
         .max_frame_size(Some(MAX_MESSAGE_BYTES));
+    let mut credential = String::new();
+    let mut pair_permit = None;
     #[allow(
         clippy::result_large_err,
         reason = "Assinatura de callback definida por tungstenite."
     )]
     let callback = |request: &Request, response: Response| -> Result<Response, ErrorResponse> {
+        if request.uri().query().is_some() || request.headers().contains_key("origin") {
+            let mut denied = ErrorResponse::new(Some("Conexão recusada".into()));
+            *denied.status_mut() = tungstenite::http::StatusCode::FORBIDDEN;
+            return Err(denied);
+        }
         // A simulação local não é uma API para páginas web.
         let endpoint = if access.is_some() {
             "/v1/control"
         } else {
             "/v1/simulate"
         };
-        let authorized = access.is_none_or(|(access, peer)| {
-            access.authorize(
-                peer,
-                request
-                    .headers()
-                    .get("authorization")
-                    .and_then(|v| v.to_str().ok()),
-            )
-        });
-        if request.uri().path() != endpoint
-            || request.uri().query().is_some()
-            || request.headers().contains_key("origin")
-            || !authorized
-        {
-            let mut denied = ErrorResponse::new(Some("Endpoint de simulação local".into()));
+        let header = request
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok());
+        let pairing = request.uri().path() == "/v1/pair" && access.is_some();
+        let authorized = if pairing {
+            pair_permit = access.and_then(|(access, peer)| access.authorize_pair(peer, header));
+            pair_permit.is_some()
+        } else {
+            access.is_none_or(|(access, peer)| access.authorize(peer, header))
+        };
+        if (!pairing && request.uri().path() != endpoint) || !authorized {
+            let mut denied = ErrorResponse::new(Some("Conexão recusada".into()));
             *denied.status_mut() = tungstenite::http::StatusCode::FORBIDDEN;
             return Err(denied);
         }
+        credential = header.unwrap_or("").to_owned();
         Ok(response)
     };
     let Ok(mut socket) = accept_hdr_with_config(stream, callback, Some(config)) else {
         return;
     };
+    if let Some(permit) = pair_permit {
+        #[derive(serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct PairRequest {
+            v: u8,
+            r#type: String,
+            name: String,
+        }
+        if let Ok(Message::Text(raw)) = socket.read()
+            && let Ok(request) = serde_json::from_str::<PairRequest>(&raw)
+            && request.v == 1
+            && request.r#type == "pair"
+            && let Some(vault) = access.and_then(|(a, _)| a.vault.as_ref())
+            && let Ok(token) = vault.grant(&request.name, permit)
+        {
+            let response = json!({"v":1,"type":"paired","token":token});
+            let _ = socket.send(Message::text(response.to_string()));
+        }
+        let _ = socket.close(None);
+        return;
+    }
     let mode = if access.is_some() {
         "control"
     } else {
@@ -105,7 +132,7 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
     }
     let started = Instant::now();
     while let Ok(message) = socket.read() {
-        if access.is_some_and(|(access, _)| access.expired()) {
+        if access.is_some_and(|(access, _)| !access.valid(&credential)) {
             break;
         }
         match message {

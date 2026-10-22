@@ -38,6 +38,12 @@ Executar no PC e celular do desenvolvedor, após as implementações corresponde
 - [ ] Primeiro pareamento pode exigir passos; usos posteriores reconectam sem credenciais/IP manual.
 - [ ] Descoberta/fallback funcionam após mudança de IP; AP isolation gera orientação útil.
 - [ ] Início após login com privilégios normais, sem UAC diário; desligar essa preferência funciona.
+- [ ] Conferir identidade completa do PC antes do primeiro pareamento; código errado, reutilizado, expirado ou cancelado não autoriza.
+- [ ] Recusar a confirmação no PC; o celular não salva autorização e não controla.
+- [ ] Revogar um celular durante arrasto; botão liberado, reconexão recusada, outro aparelho continua autorizado.
+- [ ] Fechar/reabrir e reiniciar o Android preserva a autorização protegida; executar teste instrumentado do Keystore.
+- [ ] Esquecer o PC apaga a autorização local e permite um novo pareamento; não substitui revogar um celular perdido.
+- [ ] Reiniciar o agente conserva identidade e aparelhos; reinstalar/perder o registro exige nova conferência presencial.
 - [ ] Sem tentativa de controlar tela protegida, tela de login anterior à sessão ou aplicativo elevado.
 
 ## Etapa D — robustez, pendente

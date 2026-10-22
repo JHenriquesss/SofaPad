@@ -25,6 +25,8 @@ artifacts/
 *.pfx
 *.key
 *.pem
+*.dpapi
+*.enc
 keystore.properties
 .env
 .env.*

@@ -1,6 +1,6 @@
 # Build e instalação de desenvolvimento
 
-Esta versão abre em simulação e também permite uma sessão de controle real autorizada no Windows. Consulte [conexão da Etapa B](conexao-etapa-b.md). A validação em celular físico e o fluxo doméstico persistente ainda estão pendentes; não instalar como produto pronto no PC da usuária.
+Esta versão implementa o fluxo persistente da Etapa C. Consulte [como usar](uso-domestico.md). Ainda falta o aceite em celular físico e a matriz de reinício/rede; os artefatos são de desenvolvimento e ainda não devem ser apresentados como produto pronto.
 
 ## Ferramentas
 
@@ -39,7 +39,7 @@ Em Linux/macOS, os testes do backend simulado Rust também podem ser executados.
 Saídas locais, ignoradas pelo Git:
 
 - APK: `android-app/app/build/outputs/apk/debug/app-debug.apk`.
-- Agente Windows: `windows-agent/target/release/sofapad-agent.exe` (simulado por padrão; controle real exige autorização).
+- Agente Windows: `windows-agent/target/release/sofapad-agent.exe` (bandeja por padrão; controle real exige pareamento).
 - Testes JVM: `android-app/app/build/reports/tests/testDebugUnitTest/index.html`.
 - Lint: `android-app/app/build/reports/lint-results-debug.html`.
 
@@ -55,7 +55,7 @@ adb install -r android-app/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n br.com.sofapad/.MainActivity
 ```
 
-Se houver mais de um dispositivo, use `adb -s SERIAL ...`. O app abre diretamente no controle em simulação; as configurações oferecem a conexão real. O manifesto declara `INTERNET`, sem prompt de runtime no target SDK 36. Não pede acessibilidade, captura, overlay ou localização.
+Se houver mais de um dispositivo, use `adb -s SERIAL ...`. O app abre em simulação sem PC salvo e reconecta após o primeiro pareamento. O manifesto declara somente `INTERNET`, sem prompt de runtime no target SDK 36. Não pede acessibilidade, captura, overlay ou localização. Para target 37+, será necessário adotar `ACCESS_LOCAL_NETWORK` com tratamento de concessão/recusa; esta entrega mantém o target 36 ([documentação oficial](https://developer.android.com/privacy-and-security/local-network-permission)).
 
 Para testes instrumentados com um dispositivo/emulador disponível:
 
@@ -63,7 +63,7 @@ Para testes instrumentados com um dispositivo/emulador disponível:
 .\android-app\gradlew.bat -p android-app :app:connectedDebugAndroidTest
 ```
 
-Os testes verificam posições dos controles, cancelamento de botão, texto com acentos, envio sem Enter e acesso aos atalhos na digitação compacta. Há testes adicionais dependentes de aparelhos reais em [testes manuais](testes-manuais.md).
+Os testes verificam posições dos controles, cancelamento de botão, texto com acentos, envio sem Enter e acesso aos atalhos na digitação compacta. O teste de Keystore usa arquivo e alias próprios, sem apagar o pareamento da usuária. Há testes adicionais dependentes de aparelhos reais em [testes manuais](testes-manuais.md).
 
 ## Executar o agente local
 
@@ -71,7 +71,17 @@ Os testes verificam posições dos controles, cancelamento de botão, texto com 
 cargo run --locked --manifest-path windows-agent/Cargo.toml
 ```
 
-Sem argumentos, o console identifica a simulação, escutando em `ws://127.0.0.1:49375/v1/simulate`. Encerre com Ctrl+C. Esse endpoint nunca controla o Windows e não é o endpoint usado pelo Android. Para controle real WSS, autorização local, descoberta e conexão do celular, siga [conexão da Etapa B](conexao-etapa-b.md).
+No Windows, sem argumentos, abre a bandeja. Use o build release para execução sem console, escolha `Parear celular` e siga [como usar](uso-domestico.md). A inicialização após login é opcional e só é alterada quando escolhida no menu.
+
+Para simulação local, execute `cargo run --locked --manifest-path windows-agent/Cargo.toml -- --simulate`. O endpoint `ws://127.0.0.1:49375/v1/simulate` nunca controla o Windows; encerre com Ctrl+C no build debug. A opção legada `--control` mantém a autorização temporária para diagnóstico; o app atual usa o pareamento persistente.
+
+Teste de interoperabilidade com pareamento, recarga do registro do servidor e envio Unicode pela rede de loopback, usando **entrada simulada**:
+
+```powershell
+.\scripts\test-interop.ps1 -Pairing
+```
+
+O script mantém as credenciais fictícias em pipes/variáveis de ambiente de processos filhos, sem salvá-las nem imprimi-las. `scripts/package-dev.ps1` reúne APK debug, agente e guia em `artifacts/`, com hashes SHA-256. Não publica binários nem inclui credenciais.
 
 ## Falha de socket Java no ambiente Codex/Windows
 
@@ -85,6 +95,6 @@ $env:JAVA_TOOL_OPTIONS = "-Djdk.net.unixdomain.tmpdir=$taskSocketDirectory"
 
 Use um caminho curto sem espaços nesse caso; a configuração vale apenas para essa sessão do terminal. Não é necessário alterar firewall ou privilégios do aplicativo. Referência: [OpenJDK — diretórios de sockets no Windows](https://mail.openjdk.org/pipermail/nio-dev/2023-March/013297.html).
 
-## Ainda não implementado
+## Aceite ainda pendente
 
-Pareamento persistente para uso diário, QR/código simplificado, credenciais em Keystore/DPAPI, revogação por dispositivo, bandeja e inicialização após login. A Etapa B usa identidade/código efêmeros em memória, não credenciais persistidas em texto puro. A matriz de testes em celular físico continua necessária antes da instalação doméstica.
+Celular físico na LAN, Keystore no aparelho, reinício dos dois dispositivos, habilitar/desabilitar início após login, troca de IP e suspensão. Não foi configurada inicialização automática neste PC de desenvolvimento. A assinatura de release e a distribuição final continuam pendentes; a chave privada de assinatura deve ficar fora do Git. QR é opcional e não foi acrescentado: o fluxo usa código e conferência da identidade.

@@ -16,7 +16,11 @@ class RustInteropTest {
         val acks = LinkedBlockingQueue<Command>()
         val connection = RemoteConnection({ states.offer(it) }, { acks.offer(it) }, {})
         try {
-            connection.connect(ConnectionSettings(config.getValue("host").jsonPrimitive.content, config.getValue("port").jsonPrimitive.int, config.getValue("fingerprint").jsonPrimitive.content, config.getValue("token").jsonPrimitive.content))
+            var settings = ConnectionSettings(config.getValue("host").jsonPrimitive.content, config.getValue("port").jsonPrimitive.int, config.getValue("fingerprint").jsonPrimitive.content, config.getValue("token").jsonPrimitive.content, config.containsKey("code"))
+            if (config.containsKey("code")) {
+                settings = PairingClient().use { it.pair(settings, config.getValue("code").jsonPrimitive.content, "Celular de teste Kotlin") }
+            }
+            connection.connect(settings)
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8)
             var ready = false
             while (System.nanoTime() < deadline && !ready) ready = states.poll(200, TimeUnit.MILLISECONDS) == LinkState.READY

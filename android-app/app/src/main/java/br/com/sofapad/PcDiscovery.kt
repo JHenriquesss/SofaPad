@@ -6,7 +6,7 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Handler
 import android.os.Looper
 
-data class DiscoveredPc(val name: String, val host: String, val port: Int)
+data class DiscoveredPc(val name: String, val host: String, val port: Int, val fingerprint: String = "")
 
 @Suppress("DEPRECATION")
 class PcDiscovery(context: Context, private val onDevices: (List<DiscoveredPc>) -> Unit) : AutoCloseable {
@@ -38,7 +38,8 @@ class PcDiscovery(context: Context, private val onDevices: (List<DiscoveredPc>) 
                 main.post {
                 val address = info.host?.hostAddress
                 if (!closed && devices.size < 32 && address != null && !address.contains(':')) {
-                    devices[info.serviceName] = DiscoveredPc(info.serviceName, address, info.port)
+                    val identity = info.attributes["id"]?.toString(Charsets.UTF_8)?.lowercase().orEmpty()
+                    devices[info.serviceName] = DiscoveredPc(info.serviceName, address, info.port, identity)
                     onDevices(devices.values.toList())
                 }
                 resolving = false; resolveNext()

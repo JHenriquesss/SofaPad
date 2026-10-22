@@ -1,3 +1,4 @@
+param([switch]$Pairing)
 $ErrorActionPreference = "Stop"
 $taskRoot = Split-Path -Parent $PSScriptRoot
 $taskOriginalInterop = $env:SOFAPAD_TEST_INTEROP
@@ -9,6 +10,7 @@ try {
     $taskStart = [Diagnostics.ProcessStartInfo]::new()
     $taskStart.FileName = Join-Path $taskRoot "windows-agent\target\debug\examples\wss_fixture.exe"
     $taskStart.WorkingDirectory = $taskRoot
+    if ($Pairing) { $taskStart.Arguments = '--pairing' }
     $taskStart.UseShellExecute = $false
     $taskStart.CreateNoWindow = $true
     $taskStart.RedirectStandardOutput = $true
@@ -24,7 +26,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Interoperabilidade Kotlin/Rust falhou." }
     if (-not $taskProcess.WaitForExit(10000)) { throw "Fixture não encerrou após o cliente." }
     if ($taskProcess.ExitCode -ne 0) { throw "Fixture Rust retornou erro." }
-    Write-Host "Interoperabilidade Kotlin/Rust WSS: aprovada; nenhuma credencial salva."
+    Write-Host "Interoperabilidade Kotlin/Rust WSS: aprovada; credenciais fictícias somente em memória. Pareamento persistente: $Pairing"
 } finally {
     $env:SOFAPAD_TEST_INTEROP = $taskOriginalInterop
     if ($taskProcess -and -not $taskProcess.HasExited) { $taskProcess.Kill(); $taskProcess.WaitForExit() }

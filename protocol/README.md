@@ -1,10 +1,10 @@
-# Protocolo v1 — Etapas A/B
+# Protocolo v1 — Etapas A/B/C
 
 JSON UTF-8 em WebSocket. As [fixtures válidas](fixtures/valid.json) são verificadas pelo codificador Kotlin e pelo decodificador Rust. As [inválidas](fixtures/invalid.json) devem ser rejeitadas pelo agente.
 
 ## Estado desta entrega
 
-Por padrão, o agente atende `ws://127.0.0.1:49375/v1/simulate` com backend simulado. O modo explícito `--control IP_LOCAL:PORTA`, confirmado no PC, habilita `wss://IP_LOCAL:PORTA/v1/control` com `SendInput`. A autorização Bearer efêmera é validada no upgrade antes de processar comandos. O Android confirma a identidade SHA-256 do certificado, validade e hostname/IP antes da autorização. Veja [conexão de desenvolvimento](../docs/conexao-etapa-b.md).
+No Windows, o padrão é a bandeja com registro persistente. Controle usa WSS `/v1/control`, Bearer individual no upgrade e `SendInput`. O certificado é validado por pin SHA-256, validade e hostname padrão do OkHttp. O nome TLS `sofapad.local` é estável: um resolvedor restrito liga esse nome ao IP privado descoberto, preservando a verificação de hostname e a identidade mesmo após DHCP. Descoberta não pode trocar o pin salvo. `--simulate` atende somente `ws://127.0.0.1:49375/v1/simulate`. A opção legada `--control` mantém autorização efêmera de diagnóstico.
 
 O servidor suporta uma sessão por vez, recusa `Origin` de navegadores e endpoints diferentes, limita frames e mensagens e encerra sessões ociosas após três segundos. Os testes usam portas efêmeras em loopback, sem abrir firewall.
 
@@ -33,8 +33,14 @@ Na abertura, o agente envia:
 
 Comando aceito recebe `{"v":1,"type":"ack","seq":1,"mode":"simulation"}`; `ping` recebe `pong` no lugar de `ack`. `ack` confirma que a simulação tratou a mensagem, sem afirmar entrada real no PC. Erros retornam somente código fixo, sem ecoar texto ou dados privados. O cliente de desenvolvimento deve enviar heartbeat ao menos uma vez por segundo quando não houver comandos.
 
-## Contrato para as próximas etapas
+## Pareamento persistente da Etapa C
 
-O endpoint de produção só deverá habilitar entrada após transporte WSS com identidade do PC verificada e autenticação de dispositivo previamente autorizado. Descoberta nunca concede autorização. O primeiro pareamento requer confirmação presencial no PC; expiração, limitação de tentativas e revogação precisam ser testadas. Credenciais ficarão em Keystore/DPAPI; nada de tokens em URL, fixtures ou logs. Formato de pareamento e autenticação será fechado com as bibliotecas da Etapa C, sem criptografia própria.
+O PC abre uma janela de cinco minutos pelo menu da bandeja e mostra um código aleatório de oito caracteres hexadecimais. O Android confere presencialmente o fingerprint completo antes de enviar esse código em `Authorization: Bearer …` no upgrade WSS de `/v1/pair`. Há limite de cinco falhas por IP em um minuto, tabela limitada a 64 IPs e código consumido por uma única conexão. Não há entrada remota nessa rota.
 
-Na sessão autenticada da Etapa B, `hello` informa `mode: "control"` e `authorized: true`; `ack`/`pong` mantêm esse modo. O formato dos comandos e limites permanece igual. O cliente descarta a fila ao perder a conexão; texto, atalhos e cliques não são repetidos automaticamente, pois pode não saber se o PC já os aplicou. Autorizações expiram após oito horas; certificado e código mudam ao reiniciar o agente. Persistência e revogação por dispositivo continuam para a Etapa C.
+O cliente envia apenas `{"v":1,"type":"pair","name":"Meu celular"}` (nome até 48 caracteres e 128 bytes, sem controles). O Windows pede confirmação local. Campos desconhecidos e mensagens de controle são rejeitados. Recusa, cancelamento, expiração ou confirmação após 60 segundos não geram autorização. Após salvar com sucesso, responde `{"v":1,"type":"paired","token":"<token privado>"}` e fecha. O token tem 32 bytes aleatórios, codificados em hexadecimal; não é o código curto de pareamento.
+
+Cada pareamento emite outro token, sem invalidar outros aparelhos automaticamente. A lista na bandeja permite revogar cada autorização, inclusive nomes repetidos. Há até dez autorizações e um controlador conectado por vez. A revogação é persistida, fecha o socket atual e impede novos comandos; a sessão também revalida o token antes de cada mensagem.
+
+Identidade/chave TLS e hashes SHA-256 dos tokens ficam em documento protegido pelo DPAPI do usuário, com substituição atômica. O Android salva um PC em arquivo privado fora do backup, cifrado com AES-256-GCM e chave não exportável do Android Keystore. Falha de abertura do registro do PC não gera uma identidade nova silenciosamente. Tokens nunca vão em URLs, mDNS ou logs; mDNS publica apenas a identidade pública em TXT `id`.
+
+Na sessão autenticada, `hello` informa `mode: "control"` e `authorized: true`; `ack`/`pong` mantêm esse modo. O cliente descarta a fila ao perder a conexão; texto, atalhos e cliques não são repetidos automaticamente. A autorização persistente dura até revogação ou remoção do registro; somente o modo legado temporário expira em oito horas e troca identidade ao reiniciar.

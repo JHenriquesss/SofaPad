@@ -1,10 +1,10 @@
 # Plano de conclusão
 
-Avaliação inicial em 22/10/2026, atualizada após a implementação da Etapa B. A fonte dos requisitos permanece sendo `ESPECIFICACAO.md`.
+Avaliação inicial em 22/10/2026, atualizada após a implementação da Etapa C. A fonte dos requisitos permanece sendo `ESPECIFICACAO.md`.
 
 ## Diagnóstico
 
-O conteúdo inicial continha cinco arquivos de especificação/protótipo. A Etapa A acrescentou a base nativa; a implementação da Etapa B inclui `SendInput`, WSS autorizado por sessão, descoberta, reconexão e testes de interoperabilidade Kotlin/Rust. O teste nativo Win32 passou, mas o aceite completo da Etapa B em celular físico e rede real ainda está pendente. Pareamento persistente, revogação, bandeja e início após login continuam para a Etapa C.
+O conteúdo inicial continha cinco arquivos de especificação/protótipo. A base nativa e o controle real foram implementados nas Etapas A/B. A Etapa C acrescentou pareamento persistente, revogação, Keystore/DPAPI, bandeja e opção de início após login. Os testes nativos Win32 e a interoperabilidade Kotlin/Rust passaram. O aceite em celular físico e rede real, a inicialização após login e os testes de suspensão/reinício continuam pendentes.
 
 A recomendação é manter as tecnologias e o escopo definidos e entregar incrementos pequenos, cada um com um resultado executável. Não há evidência para estimar uma data de conclusão antes do primeiro build e do primeiro teste entre celular e PC.
 
@@ -17,7 +17,7 @@ A recomendação é manter as tecnologias e o escopo definidos e entregar increm
 | C — Uso doméstico seguro | Pareamento confirmado no PC, WSS com identidade verificada, armazenamento protegido, revogação, bandeja e inicialização após login | Rejeitar dispositivo não autorizado, certificado incorreto e credencial revogada; reconectar após reiniciar sem pedir credenciais novamente |
 | D — Robustez | Ajustes de gestos, teclado, orientação, reconexão e empacotamento | Critérios de aceite da especificação verificados em dispositivos reais; instalação reproduzível e instruções simples |
 
-A ordem segue a especificação. A Etapa B antecipou TLS e autorização efêmera para não expor entrada real sem autenticação: o modo LAN exige IP privado específico, confirmação local no PC, identidade do certificado e código temporário. O modo simulado permanece em loopback. A versão doméstica só pode ser distribuída após o fluxo definitivo da Etapa C e a matriz de validação em dispositivos reais.
+A ordem segue a especificação. A Etapa B antecipou TLS e autorização efêmera; a C mantém uma identidade de PC protegida e emite tokens individuais após confirmação local. O modo simulado permanece em loopback. A distribuição final depende da matriz de validação em dispositivos reais e da assinatura de release, sem publicar a chave privada.
 
 ## Primeiro teste integrado
 
@@ -41,6 +41,7 @@ Assim que a base compilar, priorizar um fluxo completo: abrir o app no celular d
 - ai-memory consultado: nenhuma página consolidada relevante encontrada para SofaPad/Couch Remote.
 - A implementação da Etapa A já gera APK debug e executável Rust release. Resultados de validação ficam em `docs/validacao-etapa-a.md`.
 - A implementação da Etapa B gera APK debug e agente 0.2.0; resultados e limites ficam em `docs/validacao-etapa-b.md`. Não foi iniciado emulador nesta etapa para preservar recursos do outro projeto em execução.
+- A implementação da Etapa C gera APK debug e agente 0.3.0. Resultados, decisões de segurança e limites ficam em `docs/validacao-etapa-c.md`. A conexão Kotlin/Rust foi testada com pareamento e recarga do registro, sem emulador.
 
 ## Como reduzir o prazo
 

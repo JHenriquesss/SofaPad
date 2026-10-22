@@ -4,6 +4,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 enum class Screen { CONTROL, TYPING, SETTINGS }
 
@@ -28,6 +37,56 @@ class Simulator : ViewModel() {
     private var seq = 0L
     private var remote: RemoteConnection? = null
     private var connectionGeneration = 0L
+    var pairedPc by mutableStateOf<ConnectionSettings?>(null)
+        private set
+    var credentialError by mutableStateOf("")
+        private set
+    private var credentialsLoaded = false
+    private var credentialStore: CredentialStore? = null
+    private val credentialMutex = Mutex()
+    private var foreground = false
+    private var latestDevices = emptyList<DiscoveredPc>()
+    private val main by lazy { Handler(Looper.getMainLooper()) }
+    private fun post(action: () -> Unit) { main.post { action() } }
+
+    fun loadCredentials(context: Context) {
+        if (credentialsLoaded) return
+        credentialsLoaded = true
+        credentialStore = CredentialStore(context.applicationContext)
+        viewModelScope.launch {
+            val restored = credentialMutex.withLock { withContext(Dispatchers.IO) { runCatching { credentialStore!!.read() } } }
+            restored.onSuccess { config ->
+                pairedPc = config
+                if (config != null) { connect(config, ::post); if (!foreground) pause() else discovered(latestDevices) }
+            }.onFailure { credentialError = "Não foi possível abrir a autorização salva. Esqueça este PC e faça um novo pareamento." }
+        }
+    }
+    fun paired(config: ConnectionSettings) {
+        pairedPc = config; credentialError = ""
+        connect(config, ::post)
+    }
+    suspend fun savePair(config: ConnectionSettings) {
+        credentialMutex.withLock { withContext(Dispatchers.IO) { checkNotNull(credentialStore).save(config) } }
+        paired(config)
+    }
+    fun discovered(devices: List<DiscoveredPc>) {
+        latestDevices = devices
+        val current = pairedPc ?: return
+        if (!foreground || !state.remoteMode || state.link == LinkState.REJECTED || state.textPending) return
+        val pc = devices.firstOrNull { it.fingerprint == current.fingerprint } ?: return
+        if (pc.host == current.host && pc.port == current.port) return
+        val updated = runCatching { current.at(pc.host, pc.port) }.getOrNull() ?: return
+        pairedPc = updated
+        connect(updated, ::post)
+        viewModelScope.launch { credentialMutex.withLock { withContext(Dispatchers.IO) { runCatching { credentialStore?.save(updated) } } } }
+    }
+    fun forgetPc() {
+        simulation(); pairedPc = null
+        viewModelScope.launch {
+            val result = credentialMutex.withLock { withContext(Dispatchers.IO) { runCatching { credentialStore?.forget() } } }
+            credentialError = if (result.isSuccess) "" else "Não foi possível apagar a autorização local. Tente novamente."
+        }
+    }
 
     fun connect(settings: ConnectionSettings, post: (() -> Unit) -> Unit) {
         val generation = ++connectionGeneration
@@ -55,8 +114,8 @@ class Simulator : ViewModel() {
         state = SimulationState(screen = state.screen)
     }
 
-    fun pause() { releaseAll(); remote?.pause() }
-    fun resume() { remote?.resume() }
+    fun pause() { foreground = false; releaseAll(); remote?.pause() }
+    fun resume() { foreground = true; remote?.resume() }
     fun reconnect() { remote?.reconnect() }
 
     fun show(screen: Screen) {

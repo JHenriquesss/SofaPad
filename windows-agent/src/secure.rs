@@ -14,6 +14,7 @@ pub struct Access {
     secret: String,
     deadline: Instant,
     failures: Mutex<HashMap<IpAddr, (Instant, u32)>>,
+    pub vault: Option<Arc<crate::pairing::Vault>>,
 }
 
 impl Access {
@@ -25,23 +26,55 @@ impl Access {
             secret: hex(&random),
             deadline: Instant::now() + Duration::from_secs(8 * 3600),
             failures: Mutex::new(HashMap::new()),
+            vault: None,
         })
     }
     pub fn code_for_local_display(&self) -> &str {
         &self.secret
     }
+    pub fn persistent(vault: Arc<crate::pairing::Vault>) -> Self {
+        Self {
+            secret: String::new(),
+            deadline: Instant::now(),
+            failures: Mutex::new(HashMap::new()),
+            vault: Some(vault),
+        }
+    }
+    pub fn valid(&self, value: &str) -> bool {
+        let candidate = value.strip_prefix("Bearer ").unwrap_or("");
+        if let Some(vault) = &self.vault {
+            return vault.authorized(candidate);
+        }
+        !self.expired() && bool::from(self.secret.as_bytes().ct_eq(candidate.as_bytes()))
+    }
+    pub fn authorize_pair(
+        &self,
+        peer: IpAddr,
+        value: Option<&str>,
+    ) -> Option<crate::pairing::PairPermit> {
+        let mut permit = None;
+        self.limited(peer, || {
+            permit = self.vault.as_ref().and_then(|vault| {
+                vault.consume_code(value.unwrap_or("").strip_prefix("Bearer ").unwrap_or(""))
+            });
+            permit.is_some()
+        });
+        permit
+    }
     pub fn authorize(&self, peer: IpAddr, value: Option<&str>) -> bool {
+        self.limited(peer, || self.valid(value.unwrap_or("")))
+    }
+    fn limited(&self, peer: IpAddr, verify: impl FnOnce() -> bool) -> bool {
         let Ok(mut failures) = self.failures.lock() else {
             return false;
         };
         failures.retain(|_, (when, _)| when.elapsed() < Duration::from_secs(60));
         if failures.get(&peer).is_some_and(|(_, count)| *count >= 5)
-            || Instant::now() >= self.deadline
+            || (failures.len() >= 64 && !failures.contains_key(&peer))
         {
             return false;
         }
-        let candidate = value.and_then(|s| s.strip_prefix("Bearer ")).unwrap_or("");
-        if bool::from(self.secret.as_bytes().ct_eq(candidate.as_bytes())) {
+        if verify() {
             return true;
         }
         if failures.len() < 64 || failures.contains_key(&peer) {
@@ -50,7 +83,7 @@ impl Access {
         false
     }
     pub fn expired(&self) -> bool {
-        Instant::now() >= self.deadline
+        self.vault.is_none() && Instant::now() >= self.deadline
     }
 }
 
@@ -62,22 +95,31 @@ pub struct Identity {
     pub config: Arc<ServerConfig>,
     pub certificate: Vec<u8>,
     pub fingerprint: String,
+    pub(crate) private_key: Vec<u8>,
 }
 
 impl Identity {
     pub fn generate(address: IpAddr) -> io::Result<Self> {
-        let key = rcgen::generate_simple_self_signed(vec![address.to_string(), "localhost".into()])
-            .map_err(|_| io::Error::other("Falha ao gerar identidade TLS"))?;
+        let key = rcgen::generate_simple_self_signed(vec![
+            address.to_string(),
+            "localhost".into(),
+            "sofapad.local".into(),
+        ])
+        .map_err(|_| io::Error::other("Falha ao gerar identidade TLS"))?;
         let certificate = key.cert.der().to_vec();
-        let private = PrivatePkcs8KeyDer::from(key.signing_key.serialize_der());
+        Self::from_der(certificate, key.signing_key.serialize_der())
+    }
+    pub fn from_der(certificate: Vec<u8>, private_key: Vec<u8>) -> io::Result<Self> {
+        let private = PrivatePkcs8KeyDer::from(private_key.clone());
         let config = ServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(vec![key.cert.der().clone()], private.into())
+            .with_single_cert(vec![certificate.clone().into()], private.into())
             .map_err(|_| io::Error::other("Falha na configuração TLS"))?;
         Ok(Self {
             config: Arc::new(config),
             fingerprint: hex(&Sha256::digest(&certificate)),
             certificate,
+            private_key,
         })
     }
 }
