@@ -9,11 +9,11 @@ try {
     if (-not $SkipRust) {
         cargo fmt --manifest-path windows-agent/Cargo.toml -- --check
         if ($LASTEXITCODE -ne 0) { throw "Formatação Rust falhou." }
-        cargo test --locked --manifest-path windows-agent/Cargo.toml
+        cargo test --locked --jobs 2 --manifest-path windows-agent/Cargo.toml -- --test-threads=1
         if ($LASTEXITCODE -ne 0) { throw "Testes Rust falharam." }
-        cargo clippy --locked --manifest-path windows-agent/Cargo.toml --all-targets -- -D warnings
+        cargo clippy --locked --jobs 2 --manifest-path windows-agent/Cargo.toml --all-targets -- -D warnings
         if ($LASTEXITCODE -ne 0) { throw "Clippy falhou." }
-        cargo build --locked --release --manifest-path windows-agent/Cargo.toml
+        cargo build --locked --jobs 2 --release --manifest-path windows-agent/Cargo.toml
         if ($LASTEXITCODE -ne 0) { throw "Build Rust falhou." }
     }
     if (-not $SkipAndroid) {

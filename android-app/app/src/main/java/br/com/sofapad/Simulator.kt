@@ -16,20 +16,69 @@ data class SimulationState(
     val sentText: String = "",
     val event: String = "Deslize para mover o cursor simulado.",
     val eventCount: Long = 0,
+    val remoteMode: Boolean = false,
+    val link: LinkState = LinkState.DISCONNECTED,
+    val textPending: Boolean = false,
+    val deliveryWarning: String = "",
 )
 
 class Simulator : ViewModel() {
     var state by mutableStateOf(SimulationState())
         private set
     private var seq = 0L
+    private var remote: RemoteConnection? = null
+    private var connectionGeneration = 0L
+
+    fun connect(settings: ConnectionSettings, post: (() -> Unit) -> Unit) {
+        val generation = ++connectionGeneration
+        remote?.close()
+        state = state.copy(remoteMode = true, sentText = "", leftDown = false, rightDown = false)
+        remote = RemoteConnection(
+            onState = { value -> post { if (generation == connectionGeneration) state = state.copy(
+                link = value, leftDown = false, rightDown = false,
+                textPending = value == LinkState.READY && state.textPending,
+                deliveryWarning = if (value != LinkState.READY && state.textPending) "Envio não confirmado. Confira o texto no PC antes de tentar novamente." else state.deliveryWarning,
+            ) } },
+            onAck = { command -> if (command is Command.Text) post {
+                if (generation == connectionGeneration) {
+                    state = state.copy(textPending = false, deliveryWarning = "", event = "Texto inserido no PC, sem Enter.")
+                    show(Screen.CONTROL)
+                }
+            } },
+            onUncertainText = { post { if (generation == connectionGeneration) state = state.copy(textPending = false, deliveryWarning = "Envio não confirmado. Confira o texto no PC antes de tentar novamente.") } },
+        ).also { it.connect(settings) }
+    }
+
+    fun simulation() {
+        connectionGeneration++
+        remote?.close(); remote = null
+        state = SimulationState(screen = state.screen)
+    }
+
+    fun pause() { releaseAll(); remote?.pause() }
+    fun resume() { remote?.resume() }
+    fun reconnect() { remote?.reconnect() }
 
     fun show(screen: Screen) {
         releaseAll()
         state = state.copy(screen = screen)
     }
 
-    fun dispatch(command: Command) {
+    fun dispatch(command: Command): Boolean {
         Protocol.encode(++seq, command)
+        if (state.remoteMode) {
+            if (remote?.submit(command) != true) {
+                state = state.copy(leftDown = false, rightDown = false, event = "Sem conexão. Nenhum comando foi guardado para repetir.")
+                return false
+            }
+            state = when (command) {
+                is Command.Button -> state.copy(leftDown = if (command.button == MouseButton.LEFT) command.down else state.leftDown, rightDown = if (command.button == MouseButton.RIGHT) command.down else state.rightDown)
+                is Command.Text -> state.copy(textPending = true, deliveryWarning = "", event = "Aguardando confirmação do PC…")
+                Command.ReleaseAll -> state.copy(leftDown = false, rightDown = false)
+                else -> state
+            }
+            return true
+        }
         val current = state
         state = when (command) {
             is Command.Move -> current.copy(
@@ -53,6 +102,7 @@ class Simulator : ViewModel() {
             Command.ReleaseAll -> current.copy(leftDown = false, rightDown = false, event = if (current.leftDown || current.rightDown) "Botões liberados." else current.event)
             Command.Ping -> current
         }.copy(eventCount = current.eventCount + 1)
+        return true
     }
 
     fun click() {
@@ -64,10 +114,12 @@ class Simulator : ViewModel() {
 
     fun releaseAll() = dispatch(Command.ReleaseAll)
 
-    fun sendText(text: String) {
-        if (text.isNotEmpty()) dispatch(Command.Text(text))
+    fun sendText(text: String): Boolean {
+        if (text.isNotEmpty() && !dispatch(Command.Text(text))) return false
+        if (state.remoteMode) return false
         show(Screen.CONTROL)
+        return true
     }
 
-    override fun onCleared() { releaseAll() }
+    override fun onCleared() { releaseAll(); connectionGeneration++; remote?.close() }
 }

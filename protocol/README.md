@@ -1,10 +1,10 @@
-# Protocolo v1 — base da Etapa A
+# Protocolo v1 — Etapas A/B
 
 JSON UTF-8 em WebSocket. As [fixtures válidas](fixtures/valid.json) são verificadas pelo codificador Kotlin e pelo decodificador Rust. As [inválidas](fixtures/invalid.json) devem ser rejeitadas pelo agente.
 
 ## Estado desta entrega
 
-O agente atende **somente** `ws://127.0.0.1:49375/v1/simulate`, com backend simulado. O app Android também simula localmente, sem conexão de rede nem permissão `INTERNET`. Não há controle de Windows, descoberta, pareamento ou WSS nesta etapa. A simulação local não equivale a uma autorização.
+Por padrão, o agente atende `ws://127.0.0.1:49375/v1/simulate` com backend simulado. O modo explícito `--control IP_LOCAL:PORTA`, confirmado no PC, habilita `wss://IP_LOCAL:PORTA/v1/control` com `SendInput`. A autorização Bearer efêmera é validada no upgrade antes de processar comandos. O Android confirma a identidade SHA-256 do certificado, validade e hostname/IP antes da autorização. Veja [conexão de desenvolvimento](../docs/conexao-etapa-b.md).
 
 O servidor suporta uma sessão por vez, recusa `Origin` de navegadores e endpoints diferentes, limita frames e mensagens e encerra sessões ociosas após três segundos. Os testes usam portas efêmeras em loopback, sem abrir firewall.
 
@@ -37,4 +37,4 @@ Comando aceito recebe `{"v":1,"type":"ack","seq":1,"mode":"simulation"}`; `ping`
 
 O endpoint de produção só deverá habilitar entrada após transporte WSS com identidade do PC verificada e autenticação de dispositivo previamente autorizado. Descoberta nunca concede autorização. O primeiro pareamento requer confirmação presencial no PC; expiração, limitação de tentativas e revogação precisam ser testadas. Credenciais ficarão em Keystore/DPAPI; nada de tokens em URL, fixtures ou logs. Formato de pareamento e autenticação será fechado com as bibliotecas da Etapa C, sem criptografia própria.
 
-Em uma sessão autenticada futura, manter o mesmo formato de comandos e seus limites. Texto, atalhos e cliques não devem ser repetidos automaticamente depois de falha de conexão, pois o cliente pode não saber se o PC já os aplicou.
+Na sessão autenticada da Etapa B, `hello` informa `mode: "control"` e `authorized: true`; `ack`/`pong` mantêm esse modo. O formato dos comandos e limites permanece igual. O cliente descarta a fila ao perder a conexão; texto, atalhos e cliques não são repetidos automaticamente, pois pode não saber se o PC já os aplicou. Autorizações expiram após oito horas; certificado e código mudam ao reiniciar o agente. Persistência e revogação por dispositivo continuam para a Etapa C.

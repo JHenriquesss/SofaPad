@@ -26,7 +26,6 @@ pub fn bind_loopback(address: SocketAddr) -> io::Result<TcpListener> {
 }
 
 pub fn serve_connection<C: InputController>(stream: TcpStream, controller: C) {
-    let mut session = Session::new(controller);
     if stream
         .set_read_timeout(Some(Duration::from_secs(3)))
         .is_err()
@@ -37,6 +36,24 @@ pub fn serve_connection<C: InputController>(stream: TcpStream, controller: C) {
         return;
     }
     let _ = stream.set_nodelay(true);
+    serve_io(stream, controller, None);
+}
+
+pub fn serve_authorized<S: io::Read + io::Write, C: InputController>(
+    stream: S,
+    controller: C,
+    access: &crate::secure::Access,
+    peer: std::net::IpAddr,
+) {
+    serve_io(stream, controller, Some((access, peer)));
+}
+
+fn serve_io<S: io::Read + io::Write, C: InputController>(
+    stream: S,
+    controller: C,
+    access: Option<(&crate::secure::Access, std::net::IpAddr)>,
+) {
+    let mut session = Session::new(controller);
     let config = WebSocketConfig::default()
         .read_buffer_size(MAX_MESSAGE_BYTES)
         .write_buffer_size(0)
@@ -49,7 +66,25 @@ pub fn serve_connection<C: InputController>(stream: TcpStream, controller: C) {
     )]
     let callback = |request: &Request, response: Response| -> Result<Response, ErrorResponse> {
         // A simulação local não é uma API para páginas web.
-        if request.uri().path() != "/v1/simulate" || request.headers().contains_key("origin") {
+        let endpoint = if access.is_some() {
+            "/v1/control"
+        } else {
+            "/v1/simulate"
+        };
+        let authorized = access.is_none_or(|(access, peer)| {
+            access.authorize(
+                peer,
+                request
+                    .headers()
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok()),
+            )
+        });
+        if request.uri().path() != endpoint
+            || request.uri().query().is_some()
+            || request.headers().contains_key("origin")
+            || !authorized
+        {
             let mut denied = ErrorResponse::new(Some("Endpoint de simulação local".into()));
             *denied.status_mut() = tungstenite::http::StatusCode::FORBIDDEN;
             return Err(denied);
@@ -59,12 +94,20 @@ pub fn serve_connection<C: InputController>(stream: TcpStream, controller: C) {
     let Ok(mut socket) = accept_hdr_with_config(stream, callback, Some(config)) else {
         return;
     };
-    let hello = json!({"v":1,"type":"hello","mode":"simulation","authorized":false,"max_text_bytes":4096,"idle_timeout_ms":3000});
+    let mode = if access.is_some() {
+        "control"
+    } else {
+        "simulation"
+    };
+    let hello = json!({"v":1,"type":"hello","mode":mode,"authorized":access.is_some(),"max_text_bytes":4096,"idle_timeout_ms":3000});
     if socket.send(Message::text(hello.to_string())).is_err() {
         return;
     }
     let started = Instant::now();
     while let Ok(message) = socket.read() {
+        if access.is_some_and(|(access, _)| access.expired()) {
+            break;
+        }
         match message {
             Message::Text(raw) => match session.handle(raw.as_str(), started.elapsed()) {
                 Ok(envelope) => {
@@ -73,8 +116,7 @@ pub fn serve_connection<C: InputController>(stream: TcpStream, controller: C) {
                     } else {
                         "ack"
                     };
-                    let response =
-                        json!({"v":1,"type":kind,"seq":envelope.seq,"mode":"simulation"});
+                    let response = json!({"v":1,"type":kind,"seq":envelope.seq,"mode":mode});
                     if socket.send(Message::text(response.to_string())).is_err() {
                         break;
                     }

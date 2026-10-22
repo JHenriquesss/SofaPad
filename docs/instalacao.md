@@ -1,6 +1,6 @@
-# Build e instalação de desenvolvimento — Etapa A
+# Build e instalação de desenvolvimento
 
-Esta versão **simula** os comandos. Não controla o Windows e não deve ser instalada como controle remoto pronto no PC da usuária.
+Esta versão abre em simulação e também permite uma sessão de controle real autorizada no Windows. Consulte [conexão da Etapa B](conexao-etapa-b.md). A validação em celular físico e o fluxo doméstico persistente ainda estão pendentes; não instalar como produto pronto no PC da usuária.
 
 ## Ferramentas
 
@@ -11,7 +11,7 @@ Esta versão **simula** os comandos. Não controla o Windows e não deve ser ins
 
 Configure `JAVA_HOME` para o JDK e `ANDROID_HOME` para o SDK, ou informe `sdk.dir` em `android-app/local.properties` (arquivo local ignorado pelo Git). As dependências são baixadas no primeiro build. Não é preciso instalar Gradle globalmente: o wrapper está no repositório e verifica o checksum da distribuição.
 
-Versões fixadas: AGP 8.13.2, Gradle 8.14.3, Kotlin/plugin Compose 2.2.10, Compose BOM 2025.08.00; compile/target SDK 36. As versões de Rust resolvidas estão em `windows-agent/Cargo.lock`. A escolha de SDK 36 permite testar com a plataforma instalada; a migração para target 37 exigirá a revisão de permissões LAN antes da integração de rede.
+Versões fixadas: AGP 8.13.2, Gradle 8.14.3, Kotlin/plugin Compose 2.2.10, Compose BOM 2025.08.00 e OkHttp 4.12.0; compile/target SDK 36. As versões de Rust resolvidas estão em `windows-agent/Cargo.lock`. A escolha de SDK 36 permite testar com a plataforma instalada; a migração para target 37 exigirá a revisão de permissões LAN para esse novo target.
 
 Referências usadas: [compatibilidade AGP 8.13](https://developer.android.com/build/releases/agp-8-13-0-release-notes), [BOM Compose](https://android-developers.googleblog.com/2025/08/whats-new-in-jetpack-compose-august-25-release.html), [gestos Compose](https://developer.android.com/develop/ui/compose/touch-input/pointer-input/understand-gestures), [DataStore](https://developer.android.com/topic/libraries/architecture/datastore) e [tungstenite](https://docs.rs/tungstenite/0.30.0/tungstenite/).
 
@@ -23,7 +23,7 @@ No PowerShell, a partir da raiz do checkout:
 .\scripts\build.ps1
 ```
 
-O script executa formatação, testes, Clippy e build release Rust; depois APK debug, testes JVM e lint Android. Para executar apenas uma plataforma, use `-SkipAndroid` ou `-SkipRust`. Qualquer falha interrompe o script.
+O script executa formatação, testes, Clippy e build release Rust; depois APK debug, testes JVM e lint Android. Usa dois jobs Rust, testes sequenciais, um worker Gradle e heap Java de 1 GiB, sem emulador. Para executar apenas uma plataforma, use `-SkipAndroid` ou `-SkipRust`. Qualquer falha interrompe o script.
 
 Comandos individuais:
 
@@ -39,7 +39,7 @@ Em Linux/macOS, os testes do backend simulado Rust também podem ser executados.
 Saídas locais, ignoradas pelo Git:
 
 - APK: `android-app/app/build/outputs/apk/debug/app-debug.apk`.
-- Agente simulado: `windows-agent/target/release/sofapad-agent.exe`.
+- Agente Windows: `windows-agent/target/release/sofapad-agent.exe` (simulado por padrão; controle real exige autorização).
 - Testes JVM: `android-app/app/build/reports/tests/testDebugUnitTest/index.html`.
 - Lint: `android-app/app/build/reports/lint-results-debug.html`.
 
@@ -55,7 +55,7 @@ adb install -r android-app/app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n br.com.sofapad/.MainActivity
 ```
 
-Se houver mais de um dispositivo, use `adb -s SERIAL ...`. O app abre diretamente no controle e informa que está em simulação. Nenhuma permissão especial ou de rede é solicitada nesta etapa.
+Se houver mais de um dispositivo, use `adb -s SERIAL ...`. O app abre diretamente no controle em simulação; as configurações oferecem a conexão real. O manifesto declara `INTERNET`, sem prompt de runtime no target SDK 36. Não pede acessibilidade, captura, overlay ou localização.
 
 Para testes instrumentados com um dispositivo/emulador disponível:
 
@@ -71,7 +71,7 @@ Os testes verificam posições dos controles, cancelamento de botão, texto com 
 cargo run --locked --manifest-path windows-agent/Cargo.toml
 ```
 
-O console identifica explicitamente a simulação, escutando em `ws://127.0.0.1:49375/v1/simulate`. Encerre com Ctrl+C. Não há opção para expor na LAN. O APK ainda não se conecta a esse endpoint; ele exercita o mesmo contrato com seu próprio simulador. Os testes Rust fazem a conexão WebSocket real em loopback e validam o encerramento seguro das sessões.
+Sem argumentos, o console identifica a simulação, escutando em `ws://127.0.0.1:49375/v1/simulate`. Encerre com Ctrl+C. Esse endpoint nunca controla o Windows e não é o endpoint usado pelo Android. Para controle real WSS, autorização local, descoberta e conexão do celular, siga [conexão da Etapa B](conexao-etapa-b.md).
 
 ## Falha de socket Java no ambiente Codex/Windows
 
@@ -87,4 +87,4 @@ Use um caminho curto sem espaços nesse caso; a configuração vale apenas para 
 
 ## Ainda não implementado
 
-Entrada real via `SendInput`, rede Android/Windows, descoberta, pareamento, WSS, credenciais protegidas, revogação, bandeja e inicialização após login. Não abrir portas nem configurar instalação doméstica antes de concluir as etapas seguintes.
+Pareamento persistente para uso diário, QR/código simplificado, credenciais em Keystore/DPAPI, revogação por dispositivo, bandeja e inicialização após login. A Etapa B usa identidade/código efêmeros em memória, não credenciais persistidas em texto puro. A matriz de testes em celular físico continua necessária antes da instalação doméstica.

@@ -53,7 +53,8 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
         val lifecycle = LocalLifecycleOwner.current
         DisposableEffect(lifecycle, simulator) {
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) simulator.releaseAll()
+                if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) simulator.pause()
+                if (event == Lifecycle.Event.ON_RESUME) simulator.resume()
             }
             lifecycle.lifecycle.addObserver(observer)
             onDispose { lifecycle.lifecycle.removeObserver(observer); simulator.releaseAll() }
@@ -65,11 +66,11 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (compactTyping) {
-                    Text("Digitar · simulação", fontSize = 10.sp)
+                    Text(if (state.deliveryWarning.isNotEmpty()) "Envio incerto: confira o PC antes de reenviar." else if (state.remoteMode) "Digitar · ${state.link.label}" else "Digitar · simulação", fontSize = 10.sp)
                 } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("SofaPad", fontSize = 18.sp)
-                        Text("● Simulação · sem conexão com o PC", color = Color(0xFF98DABB), fontSize = 12.sp)
+                        Text(if (state.remoteMode) "● ${state.link.label}" else "● Simulação · sem conexão com o PC", color = Color(0xFF98DABB), fontSize = 12.sp)
                     }
                     IconButton(onClick = { simulator.show(if (state.screen == Screen.SETTINGS) Screen.CONTROL else Screen.SETTINGS) }, modifier = Modifier.testTag("settings")) {
                         Text("⚙", fontSize = 26.sp, modifier = Modifier.semantics { contentDescription = "Configurações" })
@@ -78,7 +79,7 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
                 when (state.screen) {
                     Screen.CONTROL -> ControlScreen(simulator, preferences, Modifier.weight(1f))
                     Screen.TYPING -> TypingScreen(simulator, Modifier.weight(1f))
-                    Screen.SETTINGS -> SettingsScreen(preferences, onPreferences, { simulator.show(Screen.CONTROL) }, Modifier.weight(1f))
+                    Screen.SETTINGS -> SettingsScreen(simulator, preferences, onPreferences, { simulator.show(Screen.CONTROL) }, Modifier.weight(1f))
                 }
             }
         }
@@ -106,7 +107,8 @@ private fun ControlScreen(simulator: Simulator, preferences: UiPreferences, modi
                 OutlinedButton(onClick = { simulator.dispatch(Command.MediaKey(Media.PLAY_PAUSE)) }, modifier = Modifier.weight(1f)) { Text("▶ / Ⅱ") }
                 OutlinedButton(onClick = { simulator.dispatch(Command.MediaKey(Media.VOLUME_UP)) }, modifier = Modifier.weight(1f)) { Text("Vol +") }
             }
-            SimulationPreview(simulator.state, compact = landscape)
+            if (!simulator.state.remoteMode) SimulationPreview(simulator.state, compact = landscape)
+            else Text(simulator.state.event, fontSize = 12.sp, maxLines = 2)
         }
     }
 }
@@ -219,12 +221,13 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
     val byteCount = draft.toByteArray(Charsets.UTF_8).size
     val valid = byteCount <= Protocol.MAX_TEXT_BYTES
     LaunchedEffect(Unit) { requester.requestFocus(); keyboard?.show() }
+    DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
 
     val editor: @Composable (Modifier) -> Unit = { fieldModifier ->
         OutlinedTextField(
-            value = draft, onValueChange = { draft = it },
+            value = draft, onValueChange = { draft = it }, readOnly = simulator.state.textPending,
             modifier = fieldModifier.focusRequester(requester).testTag("text_entry"),
-            placeholder = { Text("Digite para o PC simulado…") },
+            placeholder = { Text(if (simulator.state.remoteMode) "Digite para o PC…" else "Digite para o PC simulado…") },
             label = if (!valid) { { Text("Máximo: 4 KiB", fontSize = 10.sp) } } else null,
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true),
             isError = !valid,
@@ -239,8 +242,8 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
     }
     val actions: @Composable (Modifier) -> Unit = { rowModifier ->
         Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedButton(onClick = { draft = ""; keyboard?.hide(); simulator.show(Screen.CONTROL) }, modifier = Modifier.weight(1f).testTag("cancel_text"), contentPadding = PaddingValues(6.dp)) { Text("Cancelar") }
-            Button(onClick = { simulator.sendText(draft); draft = ""; keyboard?.hide() }, enabled = valid && draft.isNotEmpty(), modifier = Modifier.weight(1f).testTag("send_text"), contentPadding = PaddingValues(6.dp)) { Text("Enviar") }
+            OutlinedButton(onClick = { draft = ""; keyboard?.hide(); simulator.show(Screen.CONTROL) }, enabled = !simulator.state.textPending, modifier = Modifier.weight(1f).testTag("cancel_text"), contentPadding = PaddingValues(6.dp)) { Text("Cancelar") }
+            Button(onClick = { if (simulator.sendText(draft)) { draft = ""; keyboard?.hide() } }, enabled = valid && draft.isNotEmpty() && !simulator.state.textPending && (!simulator.state.remoteMode || simulator.state.link == LinkState.READY), modifier = Modifier.weight(1f).testTag("send_text"), contentPadding = PaddingValues(6.dp)) { Text(if (simulator.state.textPending) "Enviando" else "Enviar") }
         }
     }
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -255,6 +258,7 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
             }
         } else {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (simulator.state.deliveryWarning.isNotEmpty()) Text(simulator.state.deliveryWarning, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                 Text(if (valid) "Texto composto aqui; Enviar não pressiona Enter." else "Texto excede 4 KiB. Reduza para enviar.", fontSize = 12.sp, color = if (valid) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
                 editor(Modifier.weight(1f).fillMaxWidth())
                 shortcuts(Modifier.fillMaxWidth())
@@ -265,7 +269,7 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun SettingsScreen(preferences: UiPreferences, onPreferences: (UiPreferences) -> Unit, onBack: () -> Unit, modifier: Modifier) {
+private fun SettingsScreen(simulator: Simulator, preferences: UiPreferences, onPreferences: (UiPreferences) -> Unit, onBack: () -> Unit, modifier: Modifier) {
     var sensitivity by remember(preferences.sensitivity) { mutableFloatStateOf(preferences.sensitivity) }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("Configurações", style = MaterialTheme.typography.titleLarge)
@@ -282,8 +286,7 @@ private fun SettingsScreen(preferences: UiPreferences, onPreferences: (UiPrefere
         Text("Sensibilidade: ${(sensitivity * 100).toInt()}%")
         Slider(value = sensitivity, onValueChange = { sensitivity = it }, onValueChangeFinished = { onPreferences(preferences.copy(sensitivity = sensitivity)) }, valueRange = 0.4f..1.8f)
         HorizontalDivider()
-        Text("Modo simulação", style = MaterialTheme.typography.titleMedium)
-        Text("Esta versão não se conecta ao Windows. Pareamento, dispositivos e reconexão serão adicionados nas próximas etapas.", fontSize = 14.sp)
+        ConnectionPanel(simulator)
         Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text("Voltar ao controle") }
     }
 }

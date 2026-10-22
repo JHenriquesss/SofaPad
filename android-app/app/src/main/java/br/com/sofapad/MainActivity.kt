@@ -39,7 +39,12 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onStop() {
-        simulator.releaseAll()
+        simulator.pause()
         super.onStop()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        simulator.resume()
     }
 }
