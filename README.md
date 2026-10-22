@@ -20,6 +20,7 @@ Funciona sem contas, nuvem ou transmissão de tela. O agente guarda a identidade
 - [Resultados da implementação da Etapa B](docs/validacao-etapa-b.md): entrada Win32 e interoperabilidade WSS; validação física pendente.
 - [Contrato de protocolo](protocol/README.md) e fixtures compartilhadas Kotlin/Rust.
 - [Orientações de desenvolvimento](AGENTS.md).
+- [Contribuir, abrir PR e executar CI](CONTRIBUTING.md).
 - [Prompt da Etapa A](PROMPT_INICIAL_CODEX.md).
 - [Pacote original](LEIA_PRIMEIRO.md).
 

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-android:
+    name: Windows, Android e pareamento
+    runs-on: windows-2025
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Obter código
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Preparar JDK 17
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: microsoft
+          java-version: '17'
+
+      - name: Validar wrapper e preparar cache Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      - name: Preparar Rust 1.96.0
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy
+          if ($LASTEXITCODE -ne 0) { throw 'Instalação do Rust falhou.' }
+          rustup default 1.96.0
+          if ($LASTEXITCODE -ne 0) { throw 'Seleção do Rust falhou.' }
+
+      - name: Conferir Android SDK 36
+        run: |
+          if (-not $env:ANDROID_HOME) { throw 'ANDROID_HOME ausente no runner.' }
+          $taskSdkManager = Join-Path $env:ANDROID_HOME 'cmdline-tools\latest\bin\sdkmanager.bat'
+          & $taskSdkManager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
+          if ($LASTEXITCODE -ne 0) { throw 'Preparação do SDK falhou.' }
+
+      - name: Formatação, testes, Clippy e builds Windows/Android
+        run: ./scripts/build.ps1
+
+      - name: Compilar testes Android instrumentados
+        run: ./android-app/gradlew.bat -p android-app :app:assembleDebugAndroidTest --no-daemon --max-workers=1 --console=plain
+
+      - name: Testar pareamento Kotlin/Rust com recarga do registro
+        run: ./scripts/test-interop.ps1 -Pairing
+
+      - name: Confirmar execução da interoperabilidade
+        run: |
+          $taskReportPath = 'android-app/app/build/test-results/testDebugUnitTest/TEST-br.com.sofapad.RustInteropTest.xml'
+          [xml]$taskReport = Get-Content -LiteralPath $taskReportPath -Raw
+          $taskSuite = $taskReport.testsuite
+          if ([int]$taskSuite.tests -lt 1 -or [int]$taskSuite.failures -ne 0 -or [int]$taskSuite.errors -ne 0 -or [int]$taskSuite.skipped -ne 0) {
+            throw 'A interoperabilidade deve executar e passar, sem skip.'
+          }
+          @'
+          ## Verificações concluídas
+          - Rust Windows: formatação, testes automáticos, Clippy e build release.
+          - Android: APK debug, testes JVM, lint e APK de testes instrumentados compilados.
+          - Kotlin/Rust: pareamento WSS, recarga da identidade/autorização e envio Unicode confirmado, com entrada simulada.
+
+          Testes de interface/entrada nativa opt-in e testes no Android físico continuam manuais. Nenhum emulador foi iniciado.
+          '@ | Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY
