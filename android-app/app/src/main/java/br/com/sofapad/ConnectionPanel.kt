@@ -27,6 +27,7 @@ fun ConnectionPanel(simulator: Simulator) {
     var error by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var pairing by remember { mutableStateOf<PairingClient?>(null) }
+    var pairingStage by remember { mutableStateOf(PairingStage.CONNECTING) }
     var devices by remember { mutableStateOf(emptyList<DiscoveredPc>()) }
     val discovery = remember { PcDiscovery(context) { found -> devices = found } }
     DisposableEffect(discovery) { onDispose { discovery.close(); pairing?.close() } }
@@ -68,7 +69,7 @@ fun ConnectionPanel(simulator: Simulator) {
     OutlinedTextField(value = code, onValueChange = { code = it.filterNot(Char::isWhitespace).lowercase() }, enabled = !busy, label = { Text("Código de 8 caracteres do PC") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = name, onValueChange = { name = it.take(48) }, enabled = !busy, label = { Text("Nome deste celular") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-    if (busy) Text("Aguardando confirmação no PC…", fontSize = 13.sp)
+    if (busy) Text(pairingStage.label, fontSize = 13.sp)
     Button(onClick = {
         val config = runCatching {
             require(identityChecked && code.matches(Regex("[a-f0-9]{8}")) && name.isNotBlank() && name.none(Char::isISOControl))
@@ -79,16 +80,17 @@ fun ConnectionPanel(simulator: Simulator) {
             // O agente atende uma conexão por vez; encerrar o controle antes de parear novamente.
             simulator.simulation()
             busy = true; error = ""
-            val client = PairingClient(); pairing = client
+            pairingStage = PairingStage.CONNECTING
+            val client = PairingClient { stage -> scope.launch { pairingStage = stage } }; pairing = client
             val pairCode = code; val pairName = name
             scope.launch {
                 try {
                     val result = withContext(Dispatchers.IO) {
                         runCatching { client.pair(config, pairCode, pairName) }
                     }
-                    result.mapCatching { simulator.savePair(it) }
+                    result.mapCatching { pairingStage = PairingStage.SAVING; simulator.savePair(it) }
                         .onSuccess { code = ""; simulator.show(Screen.CONTROL) }
-                        .onFailure { error = "Não foi possível concluir ou salvar o pareamento. Confira a identidade, gere outro código e confirme no PC em até um minuto. Se persistir, use a mesma rede Wi-Fi e confira o firewall privado." }
+                        .onFailure { error = (it as? PairingException)?.message ?: PairingFailure.UNKNOWN.message }
                 } finally { client.close(); pairing = null; busy = false }
             }
         }

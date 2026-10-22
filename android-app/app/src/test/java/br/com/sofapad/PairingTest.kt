@@ -1,6 +1,6 @@
 package br.com.sofapad
 
-import java.io.IOException
+import java.net.ServerSocket
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.*
@@ -33,13 +33,15 @@ class PairingTest {
             }
         }))
         try {
-            PairingClient().use { client ->
+            val stages = java.util.concurrent.CopyOnWriteArrayList<PairingStage>()
+            PairingClient { stages.add(it) }.use { client ->
                 val saved = client.pair(config, "1234abcd", "Meu celular")
                 assertEquals(fakeToken, saved.token)
                 assertTrue(saved.stableIdentity)
                 assertEquals(config.fingerprint, saved.at("192.168.1.21", 49375).fingerprint)
                 assertEquals("wss://sofapad.local:${server.port}/v1/control", saved.url)
             }
+            assertEquals(listOf(PairingStage.CONNECTING, PairingStage.WAITING_PC), stages.toList())
             val request = server.takeRequest(3, TimeUnit.SECONDS)!!
             assertEquals("/v1/pair", request.path)
             assertEquals("Bearer 1234abcd", request.getHeader("Authorization"))
@@ -48,7 +50,9 @@ class PairingTest {
     @Test fun rejectsWrongHostnameEvenWhenFingerprintMatches() {
         val (server, config) = server("another.local")
         server.enqueue(MockResponse().setResponseCode(403))
-        try { PairingClient().use { client -> assertThrows(IOException::class.java) { client.pair(config, "1234abcd", "Celular") } } }
+        try { PairingClient().use { client ->
+            assertEquals(PairingFailure.IDENTITY, assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }.failure)
+        } }
         finally { server.close() }
     }
     @Test fun rejectedCodeAndInvalidReplyNeverProduceCredential() {
@@ -58,7 +62,27 @@ class PairingTest {
             override fun onMessage(webSocket: WebSocket, text: String) { webSocket.send("""{"v":1,"type":"paired","token":"invalid"}""") }
         }))
         try {
-            repeat(2) { PairingClient().use { client -> assertThrows(IOException::class.java) { client.pair(config, "1234abcd", "Celular") } } }
+            listOf(PairingFailure.CODE, PairingFailure.INVALID_REPLY).forEach { expected ->
+                PairingClient().use { client -> assertEquals(expected, assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }.failure) }
+            }
         } finally { server.close() }
+    }
+    @Test fun closedPortReportsNetworkFailureWithoutLeakingTheCode() {
+        val port = ServerSocket(0).use { it.localPort }
+        val config = ConnectionSettings("127.0.0.1", port, "a".repeat(64), "0".repeat(64), true)
+        PairingClient().use { client ->
+            val error = assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }
+            assertEquals(PairingFailure.NETWORK, error.failure)
+            assertFalse(error.toString().contains("1234abcd"))
+        }
+    }
+    @Test fun pcClosingWithoutTokenIsDifferentFromNetworkAndStorageFailure() {
+        val (server, config) = server()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) { webSocket.close(1000, null) }
+        }))
+        try { PairingClient().use { client ->
+            assertEquals(PairingFailure.PC_CLOSED, assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }.failure)
+        } } finally { server.close() }
     }
 }

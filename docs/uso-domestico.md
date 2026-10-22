@@ -1,10 +1,10 @@
 # Como usar o SofaPad
 
-Versão 0.3.0 de desenvolvimento: o fluxo está implementado, mas ainda precisa ser validado em celular físico antes da instalação definitiva.
+Versão 0.3.1 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.0.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+1. Coloque `SofaPad-agent-0.3.1.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
 2. Abra o programa. O ícone SofaPad aparece perto do relógio; pode estar dentro da seta de ícones ocultos. O build release não abre console.
 3. Se o Windows perguntar sobre firewall, permita somente na sua rede **privada/doméstica**. Não abra portas no roteador. PC e celular precisam estar na mesma rede; Wi-Fi de convidados pode impedir a conexão.
 4. Pelo ícone, abra `Status` para ver o endereço do PC. Depois escolha `Parear celular`.
@@ -39,5 +39,9 @@ Em outro computador, faça um novo pareamento. Não copie a pasta privada de cre
 ## Se não conectar
 
 Confira se o agente está aberto, os dois aparelhos estão na mesma rede e o firewall permite o programa na rede privada. Confira `Status` no PC e `Tentar novamente` no celular. Se a identidade mudou por reinstalação/perda do registro privado, esqueça o PC no celular e repita o pareamento presencial.
+
+Na versão 0.3.1, `Conectando ao PC com segurança` aparece antes da autorização; `Código aceito` só aparece depois que o PC aceitou o código no canal seguro. Nesse ponto, procure a janela de confirmação no Windows. Você pode fechar a janela que mostra o código com OK para deixar a confirmação visível. O agente solicita que a confirmação apareça na frente das outras janelas.
+
+Os erros agora distinguem rede, verificação de identidade, código recusado, encerramento pelo PC e gravação no Android. Se aparecer erro de rede, confira o IP em `Status` e a permissão do executável no firewall da rede privada; isso não exige desligar o firewall. Se a mensagem for de código recusado, gere outro código; após várias falhas, aguarde um minuto. Se o PC autorizar e o Android não conseguir salvar, a mensagem indicará essa etapa e oferecerá `Esquecer este PC` para tentar novamente.
 
 VPNs e computadores com várias interfaces podem selecionar outro endereço; desligue a VPN para o teste e confira o IP em `Status`. Não há controle de UAC, tela de login anterior à sessão nem aplicativos elevados. O agente funciona com os privilégios normais do usuário.

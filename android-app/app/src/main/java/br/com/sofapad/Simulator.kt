@@ -66,7 +66,13 @@ class Simulator : ViewModel() {
         connect(config, ::post)
     }
     suspend fun savePair(config: ConnectionSettings) {
-        credentialMutex.withLock { withContext(Dispatchers.IO) { checkNotNull(credentialStore).save(config) } }
+        try {
+            credentialMutex.withLock { withContext(Dispatchers.IO) { checkNotNull(credentialStore).save(config) } }
+        } catch (error: Exception) {
+            if (error is kotlinx.coroutines.CancellationException) throw error
+            credentialError = PairingFailure.STORAGE.message
+            throw PairingException(PairingFailure.STORAGE)
+        }
         paired(config)
     }
     fun discovered(devices: List<DiscoveredPc>) {

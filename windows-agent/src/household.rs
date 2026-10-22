@@ -13,7 +13,9 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::{IDYES, MB_DEFBUTTON2, MB_YESNO};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    IDYES, MB_DEFBUTTON2, MB_SETFOREGROUND, MB_TOPMOST, MB_YESNO,
+};
 
 pub struct Runtime {
     pub vault: Arc<Vault>,
@@ -79,7 +81,8 @@ fn run() -> io::Result<()> {
                 &format!(
                     "Autorizar o aparelho «{name}» a controlar este PC?\n\nConfirme somente se você acabou de iniciar o pareamento no seu celular. Esta autorização permanece até você revogá-la na bandeja."
                 ),
-                MB_YESNO | MB_DEFBUTTON2,
+                // Só o pareamento presencial abre este diálogo; comandos de controle preservam o foco.
+                MB_YESNO | MB_DEFBUTTON2 | MB_SETFOREGROUND | MB_TOPMOST,
             ) == IDYES
         }),
     )?);

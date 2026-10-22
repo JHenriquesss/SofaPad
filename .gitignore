@@ -38,6 +38,7 @@ pairing-data/
 # Memória e dados da máquina
 .ai-memory/
 .ai-memory.toml
+.codex-remote-attachments/
 *.log
 Thumbs.db
 Desktop.ini
