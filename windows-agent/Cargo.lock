@@ -730,7 +730,7 @@ dependencies = [
 
 [[package]]
 name = "sofapad-agent"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "ctrlc",
  "getrandom 0.4.3",

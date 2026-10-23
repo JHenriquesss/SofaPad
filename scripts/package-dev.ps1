@@ -16,6 +16,6 @@ $taskApkOutput = Join-Path $taskOutput "SofaPad-$taskAppVersion-desenvolvimento.
 $taskAgentOutput = Join-Path $taskOutput "SofaPad-agent-$taskAgentVersion.exe"
 Copy-Item -LiteralPath $taskApk -Destination $taskApkOutput
 Copy-Item -LiteralPath $taskAgent -Destination $taskAgentOutput
-Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\uso-domestico.md') -Destination (Join-Path $taskOutput "Como-usar-SofaPad-$taskAppVersion.md")
+Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\uso-domestico.md') -Destination (Join-Path $taskOutput "Como-usar-SofaPad-$taskAgentVersion.md")
 Get-FileHash -Algorithm SHA256 -LiteralPath $taskApkOutput, $taskAgentOutput | Format-Table -AutoSize
 Write-Host 'Artefatos de desenvolvimento preparados localmente. Validação em celular físico e assinatura de release pendentes.'

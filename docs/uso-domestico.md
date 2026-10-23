@@ -1,10 +1,10 @@
 # Como usar o SofaPad
 
-Versão 0.3.1 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.2 e APK Android 0.3.1 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.1.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+1. Coloque `SofaPad-agent-0.3.2.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
 2. Abra o programa. O ícone SofaPad aparece perto do relógio; pode estar dentro da seta de ícones ocultos. O build release não abre console.
 3. Se o Windows perguntar sobre firewall, permita somente na sua rede **privada/doméstica**. Não abra portas no roteador. PC e celular precisam estar na mesma rede; Wi-Fi de convidados pode impedir a conexão.
 4. Pelo ícone, abra `Status` para ver o endereço do PC. Depois escolha `Parear celular`.
@@ -39,6 +39,8 @@ Em outro computador, faça um novo pareamento. Não copie a pasta privada de cre
 ## Se não conectar
 
 Confira se o agente está aberto, os dois aparelhos estão na mesma rede e o firewall permite o programa na rede privada. Confira `Status` no PC e `Tentar novamente` no celular. Se a identidade mudou por reinstalação/perda do registro privado, esqueça o PC no celular e repita o pareamento presencial.
+
+O script opcional `scripts/liberar-sofapad.cmd` solicita uma autorização do Windows e prepara regras apenas para o SofaPad na rede privada local. Consulte [firewall e diagnóstico de rede](firewall-e-rede.md). Se o Firewall do Windows já estiver desligado, adicionar a regra não explica nem resolve por si só uma falha de acesso.
 
 Na versão 0.3.1, `Conectando ao PC com segurança` aparece antes da autorização; `Código aceito` só aparece depois que o PC aceitou o código no canal seguro. Nesse ponto, procure a janela de confirmação no Windows. Você pode fechar a janela que mostra o código com OK para deixar a confirmação visível. O agente solicita que a confirmação apareça na frente das outras janelas.
 

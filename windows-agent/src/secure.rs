@@ -150,7 +150,9 @@ pub fn serve_tls<C: InputController>(
     let Ok(peer) = stream.peer_addr() else {
         return;
     };
+    // No Windows, accept herda o modo não bloqueante do listener; TLS/WebSocket aqui usam I/O bloqueante.
     if !is_private(peer.ip())
+        || stream.set_nonblocking(false).is_err()
         || stream
             .set_read_timeout(Some(Duration::from_secs(3)))
             .is_err()
@@ -175,6 +177,49 @@ pub fn serve_tls<C: InputController>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tls_waits_for_delayed_client_on_accepted_nonblocking_stream() {
+        let listener = bind_private("127.0.0.1:0".parse().unwrap()).unwrap();
+        let address = listener.local_addr().unwrap();
+        let identity = Identity::generate(address.ip()).unwrap();
+        let mut roots = rustls::RootCertStore::empty();
+        roots.add(identity.certificate.clone().into()).unwrap();
+        let client_config = rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth();
+        let server = std::thread::spawn(move || {
+            let stream = listener.accept().unwrap().0;
+            // Reproduz a herança do listener no Windows também em outras plataformas.
+            stream.set_nonblocking(true).unwrap();
+            serve_tls(
+                stream,
+                crate::input::SimulatedInput::default(),
+                identity.config,
+                &Access::generate().unwrap(),
+            );
+        });
+        let stream = TcpStream::connect(address).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        std::thread::sleep(Duration::from_millis(100));
+        let tls = rustls::ClientConnection::new(
+            Arc::new(client_config),
+            "sofapad.local".try_into().unwrap(),
+        )
+        .unwrap();
+        let response = tungstenite::client(
+            "wss://sofapad.local/v1/control",
+            StreamOwned::new(tls, stream),
+        );
+        server.join().unwrap();
+        match response {
+            Err(tungstenite::HandshakeError::Failure(tungstenite::Error::Http(response))) => {
+                assert_eq!(response.status(), 403)
+            }
+            _ => panic!("TLS deve aguardar o cliente e recusar HTTP sem autorização"),
+        }
+    }
     #[test]
     fn rejects_public_and_unspecified_bind() {
         for address in ["0.0.0.0:0", "8.8.8.8:0", "[::]:0"] {
