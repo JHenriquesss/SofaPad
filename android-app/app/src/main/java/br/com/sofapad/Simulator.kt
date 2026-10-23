@@ -178,6 +178,21 @@ class Simulator : ViewModel() {
         dispatch(Command.Button(MouseButton.LEFT, false))
     }
 
+    fun rightClick() {
+        if (state.rightDown) return
+        dispatch(Command.Button(MouseButton.RIGHT, true))
+        dispatch(Command.Button(MouseButton.RIGHT, false))
+    }
+
+    /** Toque e logo toque-e-segure: pressiona o esquerdo para arrastar, como no touchpad de notebook. */
+    fun tapDragStart(): Boolean = !state.leftDown && dispatch(Command.Button(MouseButton.LEFT, true))
+
+    /** Solta o arrasto; se o segundo toque foi rápido e parado, completa um clique duplo. */
+    fun tapDragEnd(doubleTap: Boolean) {
+        dispatch(Command.Button(MouseButton.LEFT, false))
+        if (doubleTap) click()
+    }
+
     fun releaseAll() = dispatch(Command.ReleaseAll)
 
     fun sendText(text: String): Boolean {

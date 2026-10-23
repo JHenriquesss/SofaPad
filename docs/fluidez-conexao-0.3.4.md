@@ -10,6 +10,8 @@
 - **Rotação sem reconectar.** Girar o celular recriava a tela e derrubava a conexão; agora só solta os botões.
 - **Ajustes finos no touchpad.** Movimentos menores que a zona de toque eram descartados. Agora, se o dedo fica pousado além do tempo de um clique (300 ms), todo movimento é enviado. O toque-clique continua igual.
 
+> Correção na 0.3.5: o envio imediato desta versão esbarrou no algoritmo de Nagle do TCP, e o movimento guardado na zona de toque era enviado de uma vez, causando travadas e saltos. Veja [gestos-fluidez-0.3.5.md](gestos-fluidez-0.3.5.md).
+
 **Windows**
 
 - **Reconexão instantânea do mesmo celular.** O agente aceita conexões em paralelo (até oito abertas). Se o mesmo aparelho reconectar enquanto a conexão antiga ainda está pendurada (queda de Wi-Fi sem aviso), a nova sessão assume na hora: a antiga perde a permissão de injetar entrada e termina na próxima leitura. O estado de mouse e teclado é compartilhado entre conexões, então um arrasto deixado pela sessão antiga é solto.

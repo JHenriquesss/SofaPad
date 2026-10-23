@@ -37,6 +37,11 @@ class RemoteConnectionTest {
         assertFalse(ConnectionSettings("127.0.0.1", 443, token, token).toString().contains(token))
     }
 
+    @Test fun clientDisablesNagleSoSmallMovesAreNotBatched() {
+        val client = pinnedClient(ConnectionSettings("127.0.0.1", 443, token, token))
+        client.socketFactory.createSocket().use { assertTrue(it.tcpNoDelay) }
+    }
+
     private fun tlsServer(): Pair<MockWebServer, String> {
         val cert = HeldCertificate.Builder().addSubjectAlternativeName("127.0.0.1").build()
         val tls = HandshakeCertificates.Builder().heldCertificate(cert).build()
