@@ -123,6 +123,7 @@ class Simulator : ViewModel() {
     fun pause() { foreground = false; releaseAll(); remote?.pause() }
     fun resume() { foreground = true; remote?.resume() }
     fun reconnect() { remote?.reconnect() }
+    fun networkAvailable() { if (foreground) remote?.networkAvailable() }
 
     fun show(screen: Screen) {
         releaseAll()

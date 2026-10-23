@@ -1,7 +1,14 @@
 package br.com.sofapad
 
 import android.content.pm.ActivityInfo
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -40,9 +47,16 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private var wifiLock: WifiManager.WifiLock? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
+
     override fun onStop() {
         discovery?.close(); discovery = null
-        simulator.pause()
+        networkCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
+        networkCallback = null
+        runCatching { wifiLock?.takeIf { it.isHeld }?.release() }
+        // Girar o celular recria a Activity: mantém a conexão aberta e só solta os botões.
+        if (isChangingConfigurations) simulator.releaseAll() else simulator.pause()
         super.onStop()
     }
 
@@ -50,5 +64,24 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         simulator.resume()
         discovery = PcDiscovery(applicationContext) { simulator.discovered(it) }.also { it.start() }
+        // Sem isto o Wi-Fi do celular entra em economia entre toques e atrasa comandos em 100–200 ms.
+        // Só vale com o app em primeiro plano e a tela ligada; é liberado em onStop.
+        runCatching {
+            val lock = wifiLock ?: getSystemService(WifiManager::class.java)
+                .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "SofaPad:controle")
+                .apply { setReferenceCounted(false) }
+            wifiLock = lock
+            lock.acquire()
+        }
+        val main = Handler(Looper.getMainLooper())
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) { main.post { simulator.networkAvailable() } }
+        }
+        runCatching {
+            getSystemService(ConnectivityManager::class.java).registerNetworkCallback(
+                NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(), callback,
+            )
+            networkCallback = callback
+        }
     }
 }

@@ -1,4 +1,5 @@
 use crate::{
+    input::SharedInput,
     pairing::Vault,
     platform::*,
     secure::{Access, bind_private, is_private, serve_tls},
@@ -6,10 +7,10 @@ use crate::{
 };
 use std::{
     io,
-    net::{IpAddr, SocketAddr, TcpStream, UdpSocket},
+    net::{IpAddr, SocketAddr, UdpSocket},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -21,15 +22,11 @@ pub struct Runtime {
     pub vault: Arc<Vault>,
     pub status: Mutex<String>,
     pub stop: AtomicBool,
-    pub(crate) active: Mutex<Option<TcpStream>>,
+    pub(crate) access: Arc<Access>,
 }
 impl Runtime {
     pub fn disconnect(&self) {
-        if let Ok(active) = self.active.lock()
-            && let Some(socket) = active.as_ref()
-        {
-            let _ = socket.shutdown(std::net::Shutdown::Both);
-        }
+        self.access.disconnect();
     }
     pub fn stop(&self) {
         self.vault.cancel_pairing();
@@ -87,10 +84,10 @@ fn run() -> io::Result<()> {
         }),
     )?);
     let runtime = Arc::new(Runtime {
+        access: Arc::new(Access::persistent(vault.clone())),
         vault,
         status: Mutex::new("Aguardando rede local…".into()),
         stop: AtomicBool::new(false),
-        active: Mutex::new(None),
     });
     let worker_runtime = runtime.clone();
     let worker = std::thread::spawn(move || serve(worker_runtime));
@@ -108,6 +105,8 @@ fn run() -> io::Result<()> {
     }
     result
 }
+const MAX_OPEN_CONNECTIONS: usize = 8;
+
 fn local_address() -> io::Result<IpAddr> {
     let socket = UdpSocket::bind("0.0.0.0:0")?;
     // connect UDP apenas seleciona a rota; não envia dados ao roteador.
@@ -122,7 +121,11 @@ fn serve(runtime: Arc<Runtime>) {
     let Ok(identity) = runtime.vault.identity() else {
         return;
     };
-    let access = Access::persistent(runtime.vault.clone());
+    let config = identity.config.clone();
+    let input = SharedInput(Arc::new(Mutex::new(WindowsInput::default())));
+    // Conexões em paralelo: uma sessão antiga presa não atrasa a reconexão.
+    // O limite evita que a rede local esgote threads com handshakes abertos.
+    let open = Arc::new(AtomicUsize::new(0));
     while !runtime.stop.load(Ordering::SeqCst) {
         let result = local_address().and_then(|ip| bind_private(SocketAddr::new(ip, 49375)));
         let Ok(listener) = result else {
@@ -174,21 +177,29 @@ fn serve(runtime: Arc<Runtime>) {
             }
             match listener.accept() {
                 Ok((stream, _)) => {
-                    if let Ok(mut active) = runtime.active.lock() {
-                        *active = stream.try_clone().ok();
+                    if open.fetch_add(1, Ordering::SeqCst) >= MAX_OPEN_CONNECTIONS {
+                        open.fetch_sub(1, Ordering::SeqCst);
+                        drop(stream);
+                        continue;
                     }
-                    serve_tls(
-                        stream,
-                        WindowsInput::default(),
-                        identity.config.clone(),
-                        &access,
+                    let (access, config, counter, input) = (
+                        runtime.access.clone(),
+                        config.clone(),
+                        open.clone(),
+                        input.clone(),
                     );
-                    if let Ok(mut active) = runtime.active.lock() {
-                        *active = None;
+                    let spawned = std::thread::Builder::new()
+                        .name("sofapad-conexao".into())
+                        .spawn(move || {
+                            serve_tls(stream, input, config, &access);
+                            counter.fetch_sub(1, Ordering::SeqCst);
+                        });
+                    if spawned.is_err() {
+                        open.fetch_sub(1, Ordering::SeqCst);
                     }
                 }
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(100))
+                    std::thread::sleep(Duration::from_millis(20))
                 }
                 Err(_) => break,
             }

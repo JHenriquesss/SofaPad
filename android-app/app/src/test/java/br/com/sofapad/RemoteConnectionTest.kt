@@ -72,6 +72,40 @@ class RemoteConnectionTest {
         } finally { connection.close(); server.close() }
     }
 
+    @Test fun sendsImmediatelyButStaysUnderAgentRateLimit() {
+        val (server, fingerprint) = tlsServer()
+        val arrivals = java.util.concurrent.ConcurrentLinkedQueue<Long>()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send("""{"v":1,"type":"hello","mode":"control","authorized":true}""") }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                val value = Json.parseToJsonElement(text).jsonObject
+                if (value.getValue("type").jsonPrimitive.content == "shortcut") arrivals.add(System.nanoTime())
+                webSocket.send("""{"v":1,"type":"ack","seq":${value.getValue("seq")},"mode":"control"}""")
+            }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
+        }))
+        val states = LinkedBlockingQueue<LinkState>()
+        val acks = LinkedBlockingQueue<Command>()
+        val connection = RemoteConnection({ states.offer(it) }, { acks.offer(it) }, {})
+        try {
+            connection.connect(ConnectionSettings("127.0.0.1", server.port, fingerprint, token))
+            awaitState(states, LinkState.READY)
+            val started = System.nanoTime()
+            assertTrue(connection.submit(Command.Key(Shortcut.ESC)))
+            assertNotNull(acks.poll(5, TimeUnit.SECONDS))
+            assertTrue("um comando isolado não espera um ciclo fixo", (System.nanoTime() - started) / 1_000_000 < 500)
+            repeat(5) {
+                repeat(50) { assertTrue(connection.submit(Command.Key(Shortcut.ESC))) }
+                repeat(50) { assertNotNull(acks.poll(5, TimeUnit.SECONDS)) }
+            }
+            val times = arrivals.toList().sorted()
+            assertEquals(251, times.size)
+            val second = TimeUnit.SECONDS.toNanos(1)
+            val busiest = times.indices.maxOf { i -> times.count { it >= times[i] && it - times[i] < second } }
+            assertTrue("pico de $busiest comandos/s excede o limite do PC", busiest <= 240)
+        } finally { connection.close(); server.close() }
+    }
+
     @Test fun rejectsWrongCertificateAndRejectedAuthorization() {
         val (server, fingerprint) = tlsServer()
         server.enqueue(MockResponse().setResponseCode(403))

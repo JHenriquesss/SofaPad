@@ -5,7 +5,10 @@ use std::{
     collections::HashMap,
     io,
     net::{IpAddr, SocketAddr, TcpStream},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, Instant},
 };
 use subtle::ConstantTimeEq;
@@ -15,6 +18,52 @@ pub struct Access {
     deadline: Instant,
     failures: Mutex<HashMap<IpAddr, (Instant, u32)>>,
     pub vault: Option<Arc<crate::pairing::Vault>>,
+    controller: Mutex<Option<Controller>>,
+    gate: Mutex<u64>,
+    next_id: AtomicU64,
+}
+
+struct Controller {
+    id: u64,
+    credential: String,
+    socket: Option<TcpStream>,
+}
+
+/// Vez exclusiva de controlar o PC. Liberada ao sair da sessão.
+pub struct ControlTurn<'a> {
+    access: &'a Access,
+    id: u64,
+}
+
+impl ControlTurn<'_> {
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+    pub fn is_current(&self) -> bool {
+        self.access.with_turn(self.id, || ()).is_some()
+    }
+}
+
+impl Drop for ControlTurn<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut controller) = self.access.controller.lock()
+            && controller.as_ref().is_some_and(|c| c.id == self.id)
+        {
+            *controller = None;
+            let mut gate = self
+                .access
+                .gate
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner);
+            if *gate == self.id {
+                *gate = 0;
+            }
+        }
+    }
+}
+
+fn same_credential(a: &str, b: &str) -> bool {
+    bool::from(a.as_bytes().ct_eq(b.as_bytes()))
 }
 
 impl Access {
@@ -27,6 +76,9 @@ impl Access {
             deadline: Instant::now() + Duration::from_secs(8 * 3600),
             failures: Mutex::new(HashMap::new()),
             vault: None,
+            controller: Mutex::new(None),
+            gate: Mutex::new(0),
+            next_id: AtomicU64::new(0),
         })
     }
     pub fn code_for_local_display(&self) -> &str {
@@ -38,7 +90,60 @@ impl Access {
             deadline: Instant::now(),
             failures: Mutex::new(HashMap::new()),
             vault: Some(vault),
+            controller: Mutex::new(None),
+            gate: Mutex::new(0),
+            next_id: AtomicU64::new(0),
         }
+    }
+    /// Outro aparelho autorizado já controla o PC.
+    pub fn in_use_by_other(&self, credential: &str) -> bool {
+        self.controller.lock().is_ok_and(|controller| {
+            controller
+                .as_ref()
+                .is_some_and(|c| !same_credential(&c.credential, credential))
+        })
+    }
+    /// Fecha a sessão de controle atual, se houver.
+    pub fn disconnect(&self) {
+        if let Ok(controller) = self.controller.lock()
+            && let Some(socket) = controller.as_ref().and_then(|c| c.socket.as_ref())
+        {
+            let _ = socket.shutdown(std::net::Shutdown::Both);
+        }
+    }
+    /// Assume a vez de controlar, sem esperar. Se o mesmo aparelho reconectou, a
+    /// sessão antiga é obsoleta (Wi-Fi caiu sem aviso): ela perde a permissão de
+    /// injetar entrada imediatamente e termina na próxima leitura. Outro aparelho
+    /// nunca derruba quem está controlando.
+    pub fn take_over(
+        &self,
+        credential: &str,
+        socket: Option<TcpStream>,
+    ) -> Option<ControlTurn<'_>> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst) + 1;
+        // Ordem de travas: controller antes de gate, em todo o módulo.
+        let mut controller = self.controller.lock().ok()?;
+        if let Some(current) = controller.as_ref() {
+            if !same_credential(&current.credential, credential) {
+                return None;
+            }
+            if let Some(old) = &current.socket {
+                let _ = old.shutdown(std::net::Shutdown::Both);
+            }
+        }
+        *controller = Some(Controller {
+            id,
+            credential: credential.to_owned(),
+            socket,
+        });
+        // Espera um comando em andamento da sessão antiga terminar antes de trocar.
+        *self.gate.lock().unwrap_or_else(PoisonError::into_inner) = id;
+        Some(ControlTurn { access: self, id })
+    }
+    /// Executa `action` somente se `id` ainda tem a vez de controlar.
+    pub(crate) fn with_turn<R>(&self, id: u64, action: impl FnOnce() -> R) -> Option<R> {
+        let gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        (*gate == id).then(action)
     }
     pub fn valid(&self, value: &str) -> bool {
         let candidate = value.strip_prefix("Bearer ").unwrap_or("");
@@ -166,11 +271,13 @@ pub fn serve_tls<C: InputController>(
     let Ok(connection) = ServerConnection::new(config) else {
         return;
     };
-    crate::server::serve_authorized(
+    let control_socket = stream.try_clone().ok();
+    crate::server::serve_authorized_with_socket(
         StreamOwned::new(connection, stream),
         controller,
         access,
         peer.ip(),
+        control_socket,
     );
 }
 

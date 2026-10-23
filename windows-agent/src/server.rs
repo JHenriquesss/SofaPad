@@ -1,5 +1,5 @@
 use crate::{
-    input::InputController,
+    input::{InputController, InputError},
     protocol::{Command, MAX_MESSAGE_BYTES},
     session::Session,
 };
@@ -36,7 +36,7 @@ pub fn serve_connection<C: InputController>(stream: TcpStream, controller: C) {
         return;
     }
     let _ = stream.set_nodelay(true);
-    serve_io(stream, controller, None);
+    serve_io(stream, controller, None, None);
 }
 
 pub fn serve_authorized<S: io::Read + io::Write, C: InputController>(
@@ -45,15 +45,53 @@ pub fn serve_authorized<S: io::Read + io::Write, C: InputController>(
     access: &crate::secure::Access,
     peer: std::net::IpAddr,
 ) {
-    serve_io(stream, controller, Some((access, peer)));
+    serve_io(stream, controller, Some((access, peer)), None);
+}
+
+/// Como `serve_authorized`, com o socket TCP para que uma reconexão do mesmo
+/// aparelho ou a revogação na bandeja possam encerrar esta sessão.
+pub fn serve_authorized_with_socket<S: io::Read + io::Write, C: InputController>(
+    stream: S,
+    controller: C,
+    access: &crate::secure::Access,
+    peer: std::net::IpAddr,
+    socket: Option<TcpStream>,
+) {
+    serve_io(stream, controller, Some((access, peer)), socket);
+}
+
+/// Só deixa passar entrada enquanto a sessão tiver a vez de controlar.
+struct Gated<'a, C> {
+    inner: C,
+    turn: Option<(&'a crate::secure::Access, u64)>,
+}
+
+impl<C: InputController> InputController for Gated<'_, C> {
+    fn apply(&mut self, command: &Command) -> Result<(), InputError> {
+        match self.turn {
+            Some((access, id)) => access
+                .with_turn(id, || self.inner.apply(command))
+                .unwrap_or(Err(InputError)),
+            None => self.inner.apply(command),
+        }
+    }
+    fn release_all(&mut self) -> Result<(), InputError> {
+        match self.turn {
+            // Sessão substituída não solta o que a nova sessão pressionou.
+            Some((access, id)) => access
+                .with_turn(id, || self.inner.release_all())
+                .unwrap_or(Ok(())),
+            None => self.inner.release_all(),
+        }
+    }
 }
 
 fn serve_io<S: io::Read + io::Write, C: InputController>(
     stream: S,
     controller: C,
     access: Option<(&crate::secure::Access, std::net::IpAddr)>,
+    tcp: Option<TcpStream>,
 ) {
-    let mut session = Session::new(controller);
     let config = WebSocketConfig::default()
         .read_buffer_size(MAX_MESSAGE_BYTES)
         .write_buffer_size(0)
@@ -103,6 +141,12 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
             return Err(denied);
         }
         credential = header.unwrap_or("").to_owned();
+        // Outro aparelho controlando: recusa rápida em vez de deixar a conexão pendurada.
+        if !pairing && access.is_some_and(|(a, _)| a.in_use_by_other(&credential)) {
+            let mut busy = ErrorResponse::new(Some("PC em uso por outro aparelho".into()));
+            *busy.status_mut() = tungstenite::http::StatusCode::CONFLICT;
+            return Err(busy);
+        }
         Ok(response)
     };
     let Ok(mut socket) = accept_hdr_with_config(stream, callback, Some(config)) else {
@@ -129,6 +173,23 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
         let _ = socket.close(None);
         return;
     }
+    let turn = match access {
+        Some((access, _)) => match access.take_over(&credential, tcp) {
+            Some(turn) => Some(turn),
+            None => {
+                let _ = socket.close(None);
+                return;
+            }
+        },
+        None => None,
+    };
+    let mut controller = Gated {
+        inner: controller,
+        turn: access.zip(turn.as_ref()).map(|((a, _), t)| (a, t.id())),
+    };
+    // Solta o que uma sessão anterior do mesmo aparelho possa ter deixado pressionado.
+    let _ = controller.release_all();
+    let mut session = Session::new(controller);
     let mode = if access.is_some() {
         "control"
     } else {
@@ -140,9 +201,12 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
     }
     let started = Instant::now();
     while let Ok(message) = socket.read() {
-        if access.is_some_and(|(access, _)| {
-            !access.valid(&credential) || access.vault.as_ref().is_some_and(|v| v.pairing_active())
-        }) {
+        if turn.as_ref().is_some_and(|t| !t.is_current())
+            || access.is_some_and(|(access, _)| {
+                !access.valid(&credential)
+                    || access.vault.as_ref().is_some_and(|v| v.pairing_active())
+            })
+        {
             break;
         }
         match message {

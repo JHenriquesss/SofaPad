@@ -42,6 +42,7 @@ private val Background = Color(0xFF111C2B)
 private val Panel = Color(0xFF24364A)
 private val Pad = Color(0xFFBDD2E1)
 private val Accent = Color(0xFF1680BD)
+private const val TAP_TIMEOUT_MS = 300L
 
 @Composable
 fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: (UiPreferences) -> Unit) {
@@ -52,8 +53,10 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
             WindowInsets.ime.getBottom(LocalDensity.current) > 0
         val lifecycle = LocalLifecycleOwner.current
         DisposableEffect(lifecycle, simulator) {
+            // Soltar botões ao perder o foco; a conexão em si é pausada pela Activity em onStop,
+            // que ignora a recriação por rotação para não reconectar ao girar o celular.
             val observer = LifecycleEventObserver { _, event ->
-                if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) simulator.pause()
+                if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) simulator.releaseAll()
                 if (event == Lifecycle.Event.ON_RESUME) simulator.resume()
             }
             lifecycle.lifecycle.addObserver(observer)
@@ -170,6 +173,10 @@ private fun Touchpad(simulator: Simulator, sensitivity: Float, modifier: Modifie
                     var distance = 0f
                     var multiple = false
                     var cancelled = false
+                    // Movimento guardado enquanto o gesto ainda pode ser um toque (clique).
+                    var heldX = 0f
+                    var heldY = 0f
+                    var moving = false
                     do {
                         val event = awaitPointerEvent()
                         val active = event.changes.filter { it.pressed && it.previousPressed }
@@ -182,13 +189,18 @@ private fun Touchpad(simulator: Simulator, sensitivity: Float, modifier: Modifie
                             } else if (!multiple && active.size == 1) {
                                 val delta = active.first().positionChange()
                                 distance += abs(delta.x) + abs(delta.y)
-                                if (distance > viewConfiguration.touchSlop) {
-                                    simulator.dispatch(Command.Move((delta.x * currentSensitivity).coerceIn(-2048f, 2048f), (delta.y * currentSensitivity).coerceIn(-2048f, 2048f)))
+                                heldX += delta.x; heldY += delta.y
+                                // Deixa de ser toque ao passar da zona de toque ou ao ficar pousado além do
+                                // tempo de um clique; aí o guardado é enviado, e ajustes finos lentos funcionam.
+                                if (!moving && (distance > viewConfiguration.touchSlop || active.first().uptimeMillis - down.uptimeMillis >= TAP_TIMEOUT_MS)) moving = true
+                                if (moving && (heldX != 0f || heldY != 0f)) {
+                                    simulator.dispatch(Command.Move((heldX * currentSensitivity).coerceIn(-2048f, 2048f), (heldY * currentSensitivity).coerceIn(-2048f, 2048f)))
+                                    heldX = 0f; heldY = 0f
                                 }
                             }
                         }
                         event.changes.forEach { it.consume() }
-                        if (event.changes.none { it.pressed } && !multiple && !cancelled && distance <= viewConfiguration.touchSlop && event.changes.maxOf { it.uptimeMillis } - down.uptimeMillis < 300) simulator.click()
+                        if (event.changes.none { it.pressed } && !multiple && !cancelled && !moving && event.changes.maxOf { it.uptimeMillis } - down.uptimeMillis < TAP_TIMEOUT_MS) simulator.click()
                     } while (event.changes.any { it.pressed })
                 }
             }, contentAlignment = Alignment.Center,
