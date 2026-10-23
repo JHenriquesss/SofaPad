@@ -1,6 +1,6 @@
 # Como usar o SofaPad
 
-Agente Windows 0.3.2 e APK Android 0.3.1 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows e APK Android 0.3.2 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 

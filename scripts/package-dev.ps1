@@ -14,8 +14,15 @@ $taskAgentVersion = $taskAgentMatch.Groups[1].Value
 New-Item -ItemType Directory -Force -Path $taskOutput | Out-Null
 $taskApkOutput = Join-Path $taskOutput "SofaPad-$taskAppVersion-desenvolvimento.apk"
 $taskAgentOutput = Join-Path $taskOutput "SofaPad-agent-$taskAgentVersion.exe"
-Copy-Item -LiteralPath $taskApk -Destination $taskApkOutput
-Copy-Item -LiteralPath $taskAgent -Destination $taskAgentOutput
+function Copy-DevelopmentBinary([string]$Source, [string]$Destination) {
+    if ((Test-Path -LiteralPath $Destination -PathType Leaf) -and
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $Source).Hash -eq (Get-FileHash -Algorithm SHA256 -LiteralPath $Destination).Hash) {
+        return
+    }
+    Copy-Item -LiteralPath $Source -Destination $Destination
+}
+Copy-DevelopmentBinary $taskApk $taskApkOutput
+Copy-DevelopmentBinary $taskAgent $taskAgentOutput
 Copy-Item -LiteralPath (Join-Path $taskRoot 'docs\uso-domestico.md') -Destination (Join-Path $taskOutput "Como-usar-SofaPad-$taskAgentVersion.md")
 Get-FileHash -Algorithm SHA256 -LiteralPath $taskApkOutput, $taskAgentOutput | Format-Table -AutoSize
-Write-Host 'Artefatos de desenvolvimento preparados localmente. Validação em celular físico e assinatura de release pendentes.'
+Write-Host 'Artefatos de desenvolvimento preparados localmente. Aceite doméstico completo e assinatura de release pendentes.'

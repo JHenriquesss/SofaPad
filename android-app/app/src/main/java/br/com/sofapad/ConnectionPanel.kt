@@ -31,12 +31,14 @@ fun ConnectionPanel(simulator: Simulator) {
     var devices by remember { mutableStateOf(emptyList<DiscoveredPc>()) }
     val discovery = remember { PcDiscovery(context) { found -> devices = found } }
     DisposableEffect(discovery) { onDispose { discovery.close(); pairing?.close() } }
-    Text("PC pareado", style = MaterialTheme.typography.titleMedium)
+    Text("Conexão com o PC", style = MaterialTheme.typography.titleMedium)
     val saved = simulator.pairedPc
     if (saved != null) {
         Text("Autorização salva neste celular. Ao abrir o app, a conexão é automática na mesma rede Wi-Fi.", fontSize = 13.sp)
         Text("Endereço conhecido: ${saved.host}:${saved.port}", fontSize = 12.sp)
         OutlinedButton(onClick = { simulator.paired(saved); simulator.show(Screen.CONTROL) }, enabled = !busy) { Text("Conectar ao PC salvo") }
+    } else {
+        Text("Nenhum PC autorizado neste celular. Complete o pareamento abaixo para controlar o Windows.", fontSize = 13.sp)
     }
     if (saved != null || simulator.credentialError.isNotEmpty()) {
         OutlinedButton(onClick = { simulator.forgetPc() }, enabled = !busy) { Text("Esquecer este PC") }

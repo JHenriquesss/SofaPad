@@ -8,6 +8,8 @@ O listener do agente opera em modo não bloqueante para verificar encerramento e
 
 `secure::serve_tls` agora chama `set_nonblocking(false)` no socket aceito, mantendo os timeouts de três segundos. O listener continua não bloqueante. Não há alteração em pin SHA-256, hostname, autenticação, confirmação presencial ou firewall. O APK 0.3.1 continua compatível e não precisa ser reinstalado para essa correção do agente.
 
+O APK 0.3.2 melhora a informação de estado: a seção passou a se chamar `Conexão com o PC` e informa explicitamente quando nenhum PC foi autorizado. Antes, o título fixo `PC pareado` podia ser interpretado como uma confirmação, mesmo com a tela principal em simulação. A autorização salva e a sessão `PC conectado` continuam estados distintos.
+
 ## Evidências e arquivos
 
 - `windows-agent/src/secure.rs`: correção e teste `tls_waits_for_delayed_client_on_accepted_nonblocking_stream`. O teste força um socket aceito não bloqueante, atrasa o cliente TLS e exige HTTP 403 sem autorização. Falhou no código anterior e passou após a correção.
@@ -31,4 +33,6 @@ O teste físico via Wi-Fi passou na sonda corrigida e no agente doméstico 0.3.2
 
 A interoperabilidade Kotlin/Rust também passou, com pareamento, recarga da autorização e envio Unicode em entrada simulada. Os 16 testes JVM executaram sem falhas nem skips.
 
-O launcher já instalado no aparelho de testes foi selecionado como padrão e os APKs de desenvolvimento/testes foram instalados sem apagar dados. O SofaPad ficou aberto nesse aparelho após a validação. O resultado no POCO X6 Pro/Android 16 e o aceite completo de pareamento e controle ainda precisam de confirmação.
+O launcher já instalado no aparelho de testes foi selecionado como padrão e os APKs de desenvolvimento/testes foram instalados sem apagar dados. Em 23/10/2026, o usuário concluiu o pareamento nesse aparelho U2/Android 10 e confirmou `PC conectado` e controle funcionando. A autorização foi feita pelo fluxo normal, com código e confirmação no Windows.
+
+O POCO X6 Pro/Android 16 ainda precisa de nova validação. A matriz completa de gestos, digitação, reconexão e reinício continua pendente; essa confirmação não representa aceite doméstico de todos os cenários.
