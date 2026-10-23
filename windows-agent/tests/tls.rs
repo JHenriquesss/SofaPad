@@ -336,3 +336,77 @@ fn declined_pc_confirmation_never_creates_a_credential() {
     worker.join().unwrap();
     assert!(vault.devices().is_empty());
 }
+
+#[test]
+fn same_device_reconnect_replaces_stale_session_and_other_device_gets_busy() {
+    let vault = Arc::new(
+        sofapad_agent::pairing::Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| true))
+            .unwrap(),
+    );
+    let mut tokens = Vec::new();
+    for name in ["Sala", "Visita"] {
+        let code = vault.open_window().unwrap();
+        tokens.push(
+            vault
+                .grant(name, vault.consume_code(&code).unwrap())
+                .unwrap(),
+        );
+    }
+    let identity = vault.identity().unwrap();
+    let certificate = identity.certificate.clone();
+    let listener = bind_private("127.0.0.1:0".parse().unwrap()).unwrap();
+    let address = listener.local_addr().unwrap();
+    let input = Arc::new(Mutex::new(SimulatedInput::default()));
+    let shared = input.clone();
+    let access = Arc::new(Access::persistent(vault));
+    let server_access = access.clone();
+    let config = identity.config.clone();
+    let server = thread::spawn(move || {
+        let mut workers = Vec::new();
+        for _ in 0..3 {
+            let stream = listener.accept().unwrap().0;
+            let (access, config, shared) = (server_access.clone(), config.clone(), shared.clone());
+            workers.push(thread::spawn(move || {
+                serve_tls(stream, Shared(shared), config, &access)
+            }));
+        }
+        for worker in workers {
+            worker.join().unwrap();
+        }
+    });
+    // Sessão antiga com arrasto ativo que "some" sem fechar (Wi-Fi caiu).
+    let mut stale = connect_persistent(address, &certificate, "/v1/control", &tokens[0]).unwrap();
+    stale.read().unwrap();
+    stale
+        .send(Message::text(
+            r#"{"v":1,"type":"mouse_button","seq":1,"button":"left","state":"down"}"#,
+        ))
+        .unwrap();
+    stale.read().unwrap();
+    assert!(input.lock().unwrap().left_down);
+
+    let error = connect_persistent(address, &certificate, "/v1/control", &tokens[1]).unwrap_err();
+    assert!(error.to_string().contains("409 Conflict"));
+
+    let started = std::time::Instant::now();
+    let mut fresh = connect_persistent(address, &certificate, "/v1/control", &tokens[0]).unwrap();
+    let hello: serde_json::Value =
+        serde_json::from_str(fresh.read().unwrap().to_text().unwrap()).unwrap();
+    assert_eq!(hello["type"], "hello");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "reconexão deve substituir a sessão obsoleta sem esperar o tempo ocioso"
+    );
+    assert!(
+        !input.lock().unwrap().left_down,
+        "sessão antiga liberou o arrasto"
+    );
+    fresh
+        .send(Message::text(r#"{"v":1,"type":"ping","seq":1}"#))
+        .unwrap();
+    fresh.read().unwrap();
+    let _ = fresh.close(None);
+    drop(fresh);
+    drop(stale);
+    server.join().unwrap();
+}

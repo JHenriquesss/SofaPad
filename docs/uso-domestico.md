@@ -1,10 +1,10 @@
 # Como usar o SofaPad
 
-Agente Windows e APK Android 0.3.3 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows e APK Android 0.3.4 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.3.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+1. Coloque `SofaPad-agent-0.3.4.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
 2. Abra o programa. O ícone SofaPad aparece perto do relógio; pode estar dentro da seta de ícones ocultos. O build release não abre console.
 3. Se o Windows perguntar sobre firewall, permita somente na sua rede **privada/doméstica**. Não abra portas no roteador. PC e celular precisam estar na mesma rede; Wi-Fi de convidados pode impedir a conexão.
 4. Pelo ícone, abra `Status` para ver o endereço do PC. Depois escolha `Parear celular`.
@@ -20,7 +20,7 @@ Agente Windows e APK Android 0.3.3 de desenvolvimento: o fluxo está implementad
 
 Fechar a janela que mostra o código mantém o pareamento disponível até a expiração. `Cancelar pareamento` no menu da bandeja anula o código e pedidos ainda não confirmados.
 
-Ao abrir `Parear celular`, o agente reserva a conexão para o novo pareamento até o uso, cancelamento ou expiração do código. Isso impede que outro celular já autorizado bloqueie o pedido ao reconectar automaticamente. Depois, mantenha o SofaPad aberto em apenas um celular por vez para controlar o PC; feche o app no aparelho anterior ao trocar de controlador.
+Ao abrir `Parear celular`, o agente reserva a conexão para o novo pareamento até o uso, cancelamento ou expiração do código. Isso impede que outro celular já autorizado bloqueie o pedido ao reconectar automaticamente. Depois, mantenha o SofaPad aberto em apenas um celular por vez para controlar o PC; feche o app no aparelho anterior ao trocar de controlador. Desde a versão 0.3.4, um segundo celular recebe a mensagem de PC em uso na hora, e o mesmo celular volta a controlar imediatamente depois de uma queda de Wi-Fi.
 
 ## Usar depois
 

@@ -276,10 +276,10 @@ mod tests {
             crate::pairing::Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| false)).unwrap(),
         );
         let runtime = Arc::new(Runtime {
+            access: Arc::new(crate::secure::Access::persistent(vault.clone())),
             vault,
             status: Mutex::new("Teste local".into()),
             stop: AtomicBool::new(false),
-            active: Mutex::new(None),
         });
         run(runtime.clone()).unwrap();
         assert!(runtime.stop.load(Ordering::SeqCst));

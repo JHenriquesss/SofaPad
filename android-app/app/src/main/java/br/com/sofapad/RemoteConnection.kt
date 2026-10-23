@@ -6,6 +6,7 @@ import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.X509TrustManager
@@ -96,9 +97,34 @@ class RemoteConnection(
     private var openedAt = 0L
     private val pending = linkedMapOf<Long, Pair<Command, Long>>()
     private var pumpTask: java.util.concurrent.ScheduledFuture<*>? = null
+    // Envio imediato a cada toque (sem esperar um relógio fixo, que causava trancos
+    // quando dessincronizado da taxa de quadros da tela) com teto abaixo do limite
+    // de 240 comandos/s do PC. Movimentos que chegam durante o teto são somados.
+    private val drainPending = AtomicBoolean(false)
+    private var tokens = BURST
+    private var tokensAt = System.nanoTime()
 
     private fun startPump() {
-        if (pumpTask == null || pumpTask?.isCancelled == true) pumpTask = executor.scheduleWithFixedDelay({ runCatching { pump() }.onFailure { fail(false) } }, 16, 16, TimeUnit.MILLISECONDS)
+        if (pumpTask == null || pumpTask?.isCancelled == true) pumpTask = executor.scheduleWithFixedDelay({ runCatching { pump() }.onFailure { fail(false) } }, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS)
+    }
+
+    private fun requestDrain(delayMs: Long = 0) {
+        if (!drainPending.compareAndSet(false, true)) return
+        val task = Runnable { drainPending.set(false); runCatching { drain() }.onFailure { fail(false) } }
+        try {
+            if (delayMs == 0L) executor.execute(task) else executor.schedule(task, delayMs, TimeUnit.MILLISECONDS)
+        } catch (_: java.util.concurrent.RejectedExecutionException) { drainPending.set(false) }
+    }
+
+    private fun drain() {
+        while (state == LinkState.READY && pending.size < MAX_IN_FLIGHT) {
+            val now = System.nanoTime()
+            tokens = minOf(BURST, tokens + (now - tokensAt) / 1e9 * RATE_PER_SECOND); tokensAt = now
+            if (tokens < 1.0) { requestDrain(5); return }
+            val command = queue.poll() ?: return
+            tokens -= 1.0
+            if (!write(command)) return
+        }
     }
 
     fun connect(value: ConnectionSettings) = executor.execute {
@@ -112,8 +138,14 @@ class RemoteConnection(
 
     fun submit(command: Command): Boolean {
         if (state != LinkState.READY) return false
-        if (!queue.add(command)) { executor.execute { fail(false) }; return false }
+        if (!queue.add(command)) { post { fail(false) }; return false }
+        requestDrain()
         return true
+    }
+
+    /** O Wi-Fi voltou: tenta já, sem esperar o próximo intervalo de nova tentativa. */
+    fun networkAvailable() = post {
+        if (active && settings != null && socket == null && state == LinkState.RECONNECTING) open()
     }
 
     fun pause() = executor.execute { pauseInternal() }
@@ -169,6 +201,7 @@ class RemoteConnection(
                 val seq = value["seq"]?.jsonPrimitive?.longOrNull ?: return fail(true)
                 val command = pending.remove(seq)?.first ?: return fail(true)
                 onAck(command)
+                drain()
             }
             else -> fail(true)
         }
@@ -187,9 +220,10 @@ class RemoteConnection(
             return
         }
         if (state != LinkState.READY) return
-        if (pending.size >= 64 || pending.values.any { (System.nanoTime() - it.second) / 1_000_000 > 2500 }) { fail(false); return }
-        repeat(2) { val command = queue.poll() ?: return@repeat; if (!write(command)) return }
-        if ((System.nanoTime() - lastSend) / 1_000_000 >= 1000) write(Command.Ping)
+        // Com Wi-Fi lento, segura o envio (movimentos se somam na fila) em vez de derrubar a conexão.
+        if (pending.values.any { (System.nanoTime() - it.second) / 1_000_000 > 2500 }) { fail(false); return }
+        drain()
+        if (state == LinkState.READY && pending.size < MAX_IN_FLIGHT && (System.nanoTime() - lastSend) / 1_000_000 >= 1000) write(Command.Ping)
     }
     private fun fail(permanent: Boolean) {
         generation++
@@ -198,10 +232,19 @@ class RemoteConnection(
         if (permanent) { active = false; pumpTask?.cancel(false); pumpTask = null; update(LinkState.REJECTED); return }
         if (!active) return
         update(LinkState.RECONNECTING)
-        val wait = (1L shl retries.coerceAtMost(4)).coerceAtMost(15)
+        // Primeira tentativa quase imediata (queda breve de Wi-Fi), depois espaça até 8 s.
+        val wait = RETRY_DELAYS_MS[retries.coerceAtMost(RETRY_DELAYS_MS.lastIndex)]
         retries++
         val current = generation
-        executor.schedule({ if (active && generation == current) open() }, wait, TimeUnit.SECONDS)
+        executor.schedule({ if (active && generation == current) open() }, wait, TimeUnit.MILLISECONDS)
+    }
+
+    private companion object {
+        const val TICK_MS = 50L
+        const val RATE_PER_SECOND = 180.0
+        const val BURST = 20.0
+        const val MAX_IN_FLIGHT = 32
+        val RETRY_DELAYS_MS = longArrayOf(250, 1000, 2000, 4000, 8000)
     }
 
     override fun close() {
