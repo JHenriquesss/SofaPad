@@ -242,6 +242,70 @@ fn one_time_pairing_cannot_control_and_revocation_releases_active_drag() {
 }
 
 #[test]
+fn pairing_window_releases_old_drag_and_reserves_the_sequential_server() {
+    let vault = Arc::new(
+        sofapad_agent::pairing::Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| true))
+            .unwrap(),
+    );
+    let initial_code = vault.open_window().unwrap();
+    let token = vault
+        .grant("Anterior", vault.consume_code(&initial_code).unwrap())
+        .unwrap();
+    let identity = vault.identity().unwrap();
+    let certificate = identity.certificate.clone();
+    let listener = bind_private("127.0.0.1:0".parse().unwrap()).unwrap();
+    let address = listener.local_addr().unwrap();
+    let input = Arc::new(Mutex::new(SimulatedInput::default()));
+    let shared = input.clone();
+    let access = Access::persistent(vault.clone());
+    let worker = thread::spawn(move || {
+        for _ in 0..9 {
+            serve_tls(
+                listener.accept().unwrap().0,
+                Shared(shared.clone()),
+                identity.config.clone(),
+                &access,
+            );
+        }
+    });
+    let mut old = connect_persistent(address, &certificate, "/v1/control", &token).unwrap();
+    old.read().unwrap();
+    old.send(Message::text(
+        r#"{"v":1,"type":"mouse_button","seq":1,"button":"left","state":"down"}"#,
+    ))
+    .unwrap();
+    old.read().unwrap();
+    assert!(input.lock().unwrap().left_down);
+    let code = vault.open_window().unwrap();
+    old.send(Message::text(r#"{"v":1,"type":"ping","seq":2}"#))
+        .unwrap();
+    let _ = old.read();
+    drop(old);
+    for _ in 0..6 {
+        let error = connect_persistent(address, &certificate, "/v1/control", &token).unwrap_err();
+        assert!(error.to_string().contains("409 Conflict"));
+    }
+    assert!(!input.lock().unwrap().left_down);
+    // As reconexões recusadas não esgotam o limite de tentativas nem consomem o código.
+    let mut pair = connect_persistent(address, &certificate, "/v1/pair", &code).unwrap();
+    pair.send(Message::text(r#"{"v":1,"type":"pair","name":"Novo"}"#))
+        .unwrap();
+    let response: serde_json::Value =
+        serde_json::from_str(pair.read().unwrap().to_text().unwrap()).unwrap();
+    assert_eq!(response["type"], "paired");
+    let _ = pair.close(None);
+    drop(pair);
+    let mut resumed = connect_persistent(address, &certificate, "/v1/control", &token).unwrap();
+    resumed.read().unwrap();
+    let _ = resumed.close(None);
+    drop(resumed);
+    worker.join().unwrap();
+    assert!(vault.authorized(&token));
+    assert_eq!(vault.devices().len(), 2);
+    assert_eq!(input.lock().unwrap().applied, 1);
+}
+
+#[test]
 fn declined_pc_confirmation_never_creates_a_credential() {
     let vault = Arc::new(
         sofapad_agent::pairing::Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| false))

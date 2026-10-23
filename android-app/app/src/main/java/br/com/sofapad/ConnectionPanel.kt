@@ -7,7 +7,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
@@ -68,7 +67,7 @@ fun ConnectionPanel(simulator: Simulator) {
         Checkbox(checked = identityChecked, onCheckedChange = { identityChecked = it }, enabled = !busy)
         Text("Conferi os 64 caracteres com a identidade exibida no próprio PC.", fontSize = 13.sp, modifier = Modifier.padding(top = 12.dp))
     }
-    OutlinedTextField(value = code, onValueChange = { code = it.filterNot(Char::isWhitespace).lowercase() }, enabled = !busy, label = { Text("Código de 8 caracteres do PC") }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
+    OutlinedTextField(value = code, onValueChange = { code = it.filterNot(Char::isWhitespace).lowercase() }, enabled = !busy, label = { Text("Código de 8 caracteres do PC") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = name, onValueChange = { name = it.take(48) }, enabled = !busy, label = { Text("Nome deste celular") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
     if (busy) Text(pairingStage.label, fontSize = 13.sp)

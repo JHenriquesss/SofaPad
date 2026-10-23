@@ -18,6 +18,7 @@ enum class PairingStage(val label: String) {
 enum class PairingFailure(val message: String) {
     SETUP("Não foi possível preparar a conexão segura neste Android (P01). Informe esse diagnóstico para verificarmos a compatibilidade do aparelho."),
     NETWORK("Não foi possível acessar o PC. Confira o IP em Status no agente, a mesma rede Wi-Fi e a permissão do SofaPad no firewall da rede privada."),
+    CONNECTION_TIMEOUT("O PC não concluiu a conexão segura. Feche o SofaPad no outro celular, gere um novo código em Parear celular no PC e tente novamente. Se persistir, confira o IP e a rede Wi-Fi."),
     IDENTITY("A verificação segura da identidade do PC falhou. Confira os 64 caracteres na janela do PC e a data/hora dos aparelhos."),
     CODE("O PC recusou o código: ele pode estar incorreto, vencido ou já usado. Gere outro em Parear celular. Após várias tentativas, aguarde um minuto."),
     PC_CLOSED("O PC encerrou o pareamento sem enviar a autorização. Gere outro código e confirme Sim no Windows. Se já confirmou, o agente pode não ter conseguido salvar a autorização."),
@@ -32,14 +33,19 @@ class PairingException(val failure: PairingFailure, diagnosticType: String? = nu
     failure.message + (diagnosticType?.takeIf { it.matches(Regex("[A-Za-z0-9_$]{1,80}")) }?.let { " [$it]" } ?: "")
 )
 
-class PairingClient(private val onStage: (PairingStage) -> Unit = {}) : AutoCloseable {
+class PairingClient(
+    private val connectionTimeoutMillis: Long = 8_000,
+    private val confirmationTimeoutMillis: Long = 60_000,
+    private val onStage: (PairingStage) -> Unit = {},
+) : AutoCloseable {
     @Volatile private var socket: WebSocket? = null
     @Volatile private var closed = false
     private val done = CountDownLatch(1)
+    private val connected = CountDownLatch(1)
     @Volatile private var token: String? = null
     @Volatile private var opened = false
     private val failure = AtomicReference<PairingFailure?>()
-    private fun finish(error: PairingFailure) { if (token == null) failure.compareAndSet(null, error); done.countDown() }
+    private fun finish(error: PairingFailure) { if (token == null) failure.compareAndSet(null, error); done.countDown(); connected.countDown() }
 
     // Executado no dispatcher IO, nunca na thread de interface.
     fun pair(config: ConnectionSettings, code: String, name: String): ConnectionSettings {
@@ -59,6 +65,7 @@ class PairingClient(private val onStage: (PairingStage) -> Unit = {}) : AutoClos
                     opened = true
                     onStage(PairingStage.WAITING_PC)
                     if (!webSocket.send(buildJsonObject { put("v", 1); put("type", "pair"); put("name", name) }.toString())) finish(PairingFailure.NETWORK)
+                    connected.countDown()
                 }
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     if (token != null || failure.get() != null) return
@@ -81,14 +88,17 @@ class PairingClient(private val onStage: (PairingStage) -> Unit = {}) : AutoClos
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { finish(PairingFailure.PC_CLOSED) }
                 override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null); finish(PairingFailure.PC_CLOSED) }
             })
-            val completed = done.await(60, TimeUnit.SECONDS)
+            val established = connected.await(connectionTimeoutMillis, TimeUnit.MILLISECONDS)
             if (closed) throw PairingException(PairingFailure.CANCELLED)
-            if (!completed) throw PairingException(if (opened) PairingFailure.CONFIRMATION_TIMEOUT else PairingFailure.NETWORK)
+            if (!established) throw PairingException(PairingFailure.CONNECTION_TIMEOUT)
+            val completed = done.await(if (opened) confirmationTimeoutMillis else 0, TimeUnit.MILLISECONDS)
+            if (closed) throw PairingException(PairingFailure.CANCELLED)
+            if (!completed) throw PairingException(PairingFailure.CONFIRMATION_TIMEOUT)
             return ConnectionSettings(config.host, config.port, config.fingerprint.lowercase(), token ?: throw PairingException(failure.get() ?: PairingFailure.UNKNOWN), true)
         } finally {
             socket?.cancel(); socket = null
             http.connectionPool.evictAll(); http.dispatcher.executorService.shutdown()
         }
     }
-    override fun close() { closed = true; socket?.cancel(); done.countDown() }
+    override fun close() { closed = true; socket?.cancel(); done.countDown(); connected.countDown() }
 }

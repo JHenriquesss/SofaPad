@@ -85,4 +85,46 @@ class PairingTest {
             assertEquals(PairingFailure.PC_CLOSED, assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }.failure)
         } } finally { server.close() }
     }
+    @Test fun stalledTlsHasItsOwnShortDeadlineAndCancelsTheSocket() {
+        ServerSocket(0).use { server ->
+            val accepted = java.util.concurrent.CountDownLatch(1)
+            val worker = Thread {
+                server.accept().use { socket ->
+                    socket.soTimeout = 3_000
+                    accepted.countDown()
+                    socket.getInputStream().readBytes()
+                }
+            }.apply { isDaemon = true; start() }
+            val config = ConnectionSettings("127.0.0.1", server.localPort, "a".repeat(64), "0".repeat(64), true)
+            val began = System.nanoTime()
+            PairingClient(connectionTimeoutMillis = 500).use { client ->
+                val error = assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }
+                assertEquals(PairingFailure.CONNECTION_TIMEOUT, error.failure)
+                assertFalse(error.toString().contains("1234abcd"))
+            }
+            assertTrue(accepted.await(1, TimeUnit.SECONDS))
+            worker.join(2_000)
+            assertFalse(worker.isAlive)
+            assertTrue(TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - began) < 3_000)
+        }
+    }
+    @Test fun confirmationGetsItsOwnDeadlineAfterTheConnectionOpens() {
+        val (server, config) = server()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                Thread.sleep(800)
+                webSocket.send("""{"v":1,"type":"paired","token":"$fakeToken"}""")
+            }
+        }))
+        try { PairingClient(connectionTimeoutMillis = 500, confirmationTimeoutMillis = 2_000).use { client ->
+            assertEquals(fakeToken, client.pair(config, "1234abcd", "Celular").token)
+        } } finally { server.close() }
+    }
+    @Test fun missingPcConfirmationReportsConfirmationTimeout() {
+        val (server, config) = server()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {}))
+        try { PairingClient(confirmationTimeoutMillis = 100).use { client ->
+            assertEquals(PairingFailure.CONFIRMATION_TIMEOUT, assertThrows(PairingException::class.java) { client.pair(config, "1234abcd", "Celular") }.failure)
+        } } finally { server.close() }
+    }
 }

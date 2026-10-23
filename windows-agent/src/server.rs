@@ -83,6 +83,14 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
             .get("authorization")
             .and_then(|v| v.to_str().ok());
         let pairing = request.uri().path() == "/v1/pair" && access.is_some();
+        // Reserva o servidor sequencial para o novo aparelho, sem consumir tentativas de autorização.
+        if !pairing
+            && access.is_some_and(|(a, _)| a.vault.as_ref().is_some_and(|v| v.pairing_active()))
+        {
+            let mut busy = ErrorResponse::new(Some("Pareamento em andamento".into()));
+            *busy.status_mut() = tungstenite::http::StatusCode::CONFLICT;
+            return Err(busy);
+        }
         let authorized = if pairing {
             pair_permit = access.and_then(|(access, peer)| access.authorize_pair(peer, header));
             pair_permit.is_some()
@@ -132,7 +140,9 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
     }
     let started = Instant::now();
     while let Ok(message) = socket.read() {
-        if access.is_some_and(|(access, _)| !access.valid(&credential)) {
+        if access.is_some_and(|(access, _)| {
+            !access.valid(&credential) || access.vault.as_ref().is_some_and(|v| v.pairing_active())
+        }) {
             break;
         }
         match message {

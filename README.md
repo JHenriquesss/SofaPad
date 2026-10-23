@@ -13,6 +13,7 @@ Funciona sem contas, nuvem ou transmissão de tela. O agente guarda a identidade
 - [Plano de conclusão](docs/plano-de-conclusao.md): avaliação inicial, prioridades e verificações por etapa.
 - [Build e instalação de desenvolvimento](docs/instalacao.md).
 - [Como usar e parear](docs/uso-domestico.md).
+- [Correção de pareamento com outro celular conectado — 0.3.3](docs/correcao-pareamento-0.3.3.md).
 - [Segurança e validação da Etapa C](docs/validacao-etapa-c.md).
 - [Conectar celular e PC na Etapa B](docs/conexao-etapa-b.md).
 - [Testes manuais](docs/testes-manuais.md).

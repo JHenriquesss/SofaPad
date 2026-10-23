@@ -107,6 +107,11 @@ impl Vault {
             *window = None;
         }
     }
+    pub fn pairing_active(&self) -> bool {
+        self.window
+            .lock()
+            .is_ok_and(|window| window.as_ref().is_some_and(|w| Instant::now() < w.deadline))
+    }
     pub fn consume_code(&self, code: &str) -> Option<PairPermit> {
         let Ok(mut window) = self.window.lock() else {
             return None;
@@ -212,6 +217,23 @@ fn random_hex(size: usize) -> io::Result<String> {
 mod tests {
     use super::*;
     use std::sync::Arc;
+    #[test]
+    fn pairing_reservation_ends_on_consumption_cancellation_or_expiry() {
+        let vault = Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| true)).unwrap();
+        assert!(!vault.pairing_active());
+        let code = vault.open_window().unwrap();
+        assert!(vault.pairing_active());
+        assert!(vault.consume_code("invalid").is_none());
+        assert!(vault.pairing_active());
+        assert!(vault.consume_code(&code).is_some());
+        assert!(!vault.pairing_active());
+        vault.open_window().unwrap();
+        vault.cancel_pairing();
+        assert!(!vault.pairing_active());
+        vault.open_window().unwrap();
+        vault.window.lock().unwrap().as_mut().unwrap().deadline = Instant::now();
+        assert!(!vault.pairing_active());
+    }
     #[test]
     fn canceled_expired_and_rate_limited_pairings_cannot_be_granted() {
         let vault = Arc::new(Vault::open(None, Box::new(|_| Ok(())), Box::new(|_| true)).unwrap());

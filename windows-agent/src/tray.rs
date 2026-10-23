@@ -137,8 +137,8 @@ unsafe extern "system" fn procedure(
                     );
                 }
                 2 => {
-                    runtime.disconnect();
                     if let Ok(code) = runtime.vault.open_window() {
+                        runtime.disconnect();
                         let status = runtime.status.lock().map(|s| s.clone()).unwrap_or_default();
                         if let Ok(identity) = runtime.vault.identity() {
                             dialog(
