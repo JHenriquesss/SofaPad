@@ -37,12 +37,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.abs
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private val Background = Color(0xFF111C2B)
 private val Panel = Color(0xFF24364A)
 private val Pad = Color(0xFFBDD2E1)
 private val Accent = Color(0xFF1680BD)
 private const val TAP_TIMEOUT_MS = 300L
+private const val DOUBLE_TAP_MS = 250L
 
 @Composable
 fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: (UiPreferences) -> Unit) {
@@ -166,48 +171,80 @@ private fun Touchpad(simulator: Simulator, sensitivity: Float, modifier: Modifie
     val currentSensitivity by rememberUpdatedState(sensitivity)
     Box(
         modifier.clip(RoundedCornerShape(14.dp)).background(Pad).testTag("touchpad")
-            .semantics { contentDescription = "Touchpad simulado. Deslize para mover; dois dedos para rolar; toque para clicar." }
+            .semantics { contentDescription = "Touchpad. Deslize para mover; toque para clicar; toque com dois dedos para clique direito; dois dedos para rolar; toque e toque de novo segurando para arrastar." }
             .pointerInput(simulator) {
-                awaitEachGesture {
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    var distance = 0f
-                    var multiple = false
-                    var cancelled = false
-                    // Movimento guardado enquanto o gesto ainda pode ser um toque (clique).
-                    var heldX = 0f
-                    var heldY = 0f
-                    var moving = false
-                    do {
-                        val event = awaitPointerEvent()
-                        val active = event.changes.filter { it.pressed && it.previousPressed }
-                        if (event.changes.count { it.pressed } >= 2) multiple = true
-                        if (event.changes.any { it.isConsumed }) cancelled = true
-                        if (!cancelled) {
-                            if (active.size >= 2) {
-                                val dy = active.map { it.positionChange().y }.average().toFloat()
-                                if (dy != 0f) simulator.dispatch(Command.Scroll((-dy / 16).coerceIn(-120f, 120f)))
-                            } else if (!multiple && active.size == 1) {
-                                val delta = active.first().positionChange()
-                                distance += abs(delta.x) + abs(delta.y)
-                                heldX += delta.x; heldY += delta.y
-                                // Deixa de ser toque ao passar da zona de toque ou ao ficar pousado além do
-                                // tempo de um clique; aí o guardado é enviado, e ajustes finos lentos funcionam.
-                                if (!moving && (distance > viewConfiguration.touchSlop || active.first().uptimeMillis - down.uptimeMillis >= TAP_TIMEOUT_MS)) moving = true
-                                if (moving && (heldX != 0f || heldY != 0f)) {
-                                    simulator.dispatch(Command.Move((heldX * currentSensitivity).coerceIn(-2048f, 2048f), (heldY * currentSensitivity).coerceIn(-2048f, 2048f)))
-                                    heldX = 0f; heldY = 0f
+                coroutineScope {
+                    val scope = this
+                    // Clique do toque, adiado pela janela do toque duplo: se outro toque chegar antes,
+                    // vira arrasto (botão esquerdo pressionado) sem o PC ver um clique duplo antes.
+                    var pendingTap: Job? = null
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        val secondTap = pendingTap?.isActive == true
+                        pendingTap?.cancel(); pendingTap = null
+                        var dragging = secondTap && simulator.tapDragStart()
+                        var distance = 0f
+                        var multiple = false
+                        var fingers = 1
+                        var cancelled = false
+                        var moving = false
+                        var scrollTravel = 0f
+                        var heldScroll = 0f
+                        try {
+                            do {
+                                val event = awaitPointerEvent()
+                                val active = event.changes.filter { it.pressed && it.previousPressed }
+                                val pressed = event.changes.count { it.pressed }
+                                if (pressed >= 2) multiple = true
+                                fingers = maxOf(fingers, pressed)
+                                if (event.changes.any { it.isConsumed }) cancelled = true
+                                if (!cancelled) {
+                                    if (active.size >= 2) {
+                                        val dy = active.map { it.positionChange().y }.average().toFloat()
+                                        scrollTravel += active.maxOf { abs(it.positionChange().x) + abs(it.positionChange().y) }
+                                        heldScroll += dy
+                                        // Toque com dois dedos é clique direito; só rola depois da zona de toque.
+                                        if (scrollTravel > viewConfiguration.touchSlop && heldScroll != 0f) {
+                                            simulator.dispatch(Command.Scroll((-heldScroll / 16).coerceIn(-120f, 120f)))
+                                            heldScroll = 0f
+                                        }
+                                    } else if (!multiple && active.size == 1) {
+                                        val delta = active.first().positionChange()
+                                        distance += abs(delta.x) + abs(delta.y)
+                                        // Deixa de ser toque ao passar da zona de toque ou ao ficar pousado além do
+                                        // tempo de um clique; daí em diante ajustes finos lentos funcionam. O movimento
+                                        // dentro da zona não é enviado depois: somado, dava um salto no início de cada
+                                        // deslizada (medido na 0.3.4: 1º movimento com o dobro do tamanho normal).
+                                        if (!moving && (distance > viewConfiguration.touchSlop || active.first().uptimeMillis - down.uptimeMillis >= TAP_TIMEOUT_MS)) moving = true
+                                        if (moving && delta != Offset.Zero) {
+                                            simulator.dispatch(Command.Move((delta.x * currentSensitivity).coerceIn(-2048f, 2048f), (delta.y * currentSensitivity).coerceIn(-2048f, 2048f)))
+                                        }
+                                    }
                                 }
-                            }
+                                event.changes.forEach { it.consume() }
+                                if (event.changes.none { it.pressed }) {
+                                    val quick = event.changes.maxOf { it.uptimeMillis } - down.uptimeMillis < TAP_TIMEOUT_MS
+                                    if (dragging) {
+                                        dragging = false
+                                        simulator.tapDragEnd(doubleTap = quick && !moving && !multiple && !cancelled)
+                                    } else if (!cancelled && quick && !multiple && !moving) {
+                                        pendingTap = scope.launch { delay(DOUBLE_TAP_MS); simulator.click() }
+                                    } else if (!cancelled && quick && fingers == 2 && scrollTravel <= viewConfiguration.touchSlop) {
+                                        simulator.rightClick()
+                                    }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        } finally {
+                            if (dragging) simulator.tapDragEnd(doubleTap = false)
                         }
-                        event.changes.forEach { it.consume() }
-                        if (event.changes.none { it.pressed } && !multiple && !cancelled && !moving && event.changes.maxOf { it.uptimeMillis } - down.uptimeMillis < TAP_TIMEOUT_MS) simulator.click()
-                    } while (event.changes.any { it.pressed })
+                    }
                 }
             }, contentAlignment = Alignment.Center,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text("TOUCHPAD", color = Color(0xFF294E68), fontSize = 18.sp)
-            Text("Deslize · toque para clicar", color = Color(0xFF45677D), fontSize = 12.sp)
+            Text("Toque: clique · 2 dedos: direito/rolar", color = Color(0xFF45677D), fontSize = 12.sp)
+            Text("Toque duas vezes e segure: arrastar", color = Color(0xFF45677D), fontSize = 12.sp)
         }
     }
 }

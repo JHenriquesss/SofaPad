@@ -1,12 +1,14 @@
 package br.com.sofapad
 
 import java.net.InetAddress
+import java.net.Socket
 import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.net.SocketFactory
 import javax.net.ssl.SSLContext
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.X509TrustManager
@@ -32,6 +34,7 @@ fun pinnedClient(config: ConnectionSettings): OkHttpClient {
     val ssl = SSLContext.getInstance("TLS").apply { init(null, arrayOf(trust), null) }
     val builder = OkHttpClient.Builder().sslSocketFactory(ssl.socketFactory, trust)
         .proxy(java.net.Proxy.NO_PROXY)
+        .socketFactory(NoDelaySocketFactory)
         .connectTimeout(3, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS)
         .retryOnConnectionFailure(false)
     // A identidade DNS do certificado permanece estável quando o IP do PC muda.
@@ -43,6 +46,20 @@ fun pinnedClient(config: ConnectionSettings): OkHttpClient {
         }
     })
     return builder.build()
+}
+
+/**
+ * O OkHttp não desliga o algoritmo de Nagle. Com ele ligado, cada movimento pequeno espera a
+ * confirmação TCP do anterior e os movimentos chegam ao PC em lotes, o cursor anda aos saltos.
+ */
+object NoDelaySocketFactory : SocketFactory() {
+    private val system: SocketFactory = getDefault()
+    private fun Socket.fast() = apply { tcpNoDelay = true }
+    override fun createSocket(): Socket = system.createSocket().fast()
+    override fun createSocket(host: String, port: Int): Socket = system.createSocket(host, port).fast()
+    override fun createSocket(host: String, port: Int, localHost: InetAddress, localPort: Int): Socket = system.createSocket(host, port, localHost, localPort).fast()
+    override fun createSocket(host: InetAddress, port: Int): Socket = system.createSocket(host, port).fast()
+    override fun createSocket(address: InetAddress, port: Int, localAddress: InetAddress, localPort: Int): Socket = system.createSocket(address, port, localAddress, localPort).fast()
 }
 
 class PinnedTrust(private val fingerprint: String) : X509TrustManager {
