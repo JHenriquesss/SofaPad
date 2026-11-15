@@ -62,13 +62,9 @@ pub fn start() -> io::Result<()> {
     result
 }
 fn run() -> io::Result<()> {
-    let directory = std::path::PathBuf::from(
-        std::env::var_os("LOCALAPPDATA")
-            .ok_or_else(|| io::Error::other("Pasta do usuário indisponível"))?,
-    )
-    .join("SofaPad");
-    std::fs::create_dir_all(&directory)?;
-    let path = directory.join("credentials.dpapi");
+    let path = data_directory()?.join("credentials.dpapi");
+    // Falha aqui não impede o uso: o menu da bandeja mostra o estado e permite tentar de novo.
+    let _ = ensure_startup();
     let saved = load(&path)?;
     let vault = Arc::new(Vault::open(
         saved.as_deref(),

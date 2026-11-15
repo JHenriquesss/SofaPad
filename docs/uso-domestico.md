@@ -1,10 +1,10 @@
 # Como usar o SofaPad
 
-Agente Windows 0.3.4 e APK Android 0.3.5 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.6 e APK Android 0.3.6 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.4.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+1. Coloque `SofaPad-agent-0.3.6.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
 2. Abra o programa. O ícone SofaPad aparece perto do relógio; pode estar dentro da seta de ícones ocultos. O build release não abre console.
 3. Se o Windows perguntar sobre firewall, permita somente na sua rede **privada/doméstica**. Não abra portas no roteador. PC e celular precisam estar na mesma rede; Wi-Fi de convidados pode impedir a conexão.
 4. Pelo ícone, abra `Status` para ver o endereço do PC. Depois escolha `Parear celular`.
@@ -26,7 +26,7 @@ Ao abrir `Parear celular`, o agente reserva a conexão para o novo pareamento at
 
 Abra o SofaPad no celular. A autorização é recuperada e o app tenta reconectar ao PC. A descoberta pode atualizar o endereço se o roteador mudar o IP. Se o app foi colocado em simulação nesta sessão, use `Conectar ao PC salvo` nas configurações.
 
-O PC precisa estar ligado e com o usuário já conectado ao Windows. Para não abrir o programa manualmente todo dia, escolha `Iniciar com Windows` na bandeja. A opção vale só para esse usuário e não pede administrador. `Desativar início com Windows` desfaz essa escolha; mantenha o executável na mesma pasta.
+O PC precisa estar ligado e com o usuário já conectado ao Windows. Desde a versão 0.3.6, o agente passa a iniciar sozinho depois do login assim que é aberto uma vez: não é preciso abri-lo todo dia. A opção `Iniciar com o Windows` da bandeja aparece marcada; clique nela para desmarcar se preferir abrir manualmente (a escolha é lembrada). Vale só para esse usuário e não pede administrador. Ao trocar de versão ou mover o executável, abra o novo uma vez: o início automático passa a apontar para ele. Se o agente não aparecer depois de reiniciar, confira em `Configurações do Windows > Aplicativos > Inicialização` se o SofaPad não foi desligado ali.
 
 Deslize no touchpad para mover o cursor. Gestos do touchpad, como no notebook:
 
@@ -36,6 +36,8 @@ Deslize no touchpad para mover o cursor. Gestos do touchpad, como no notebook:
 - Toque com dois dedos: clique direito.
 - Deslize com dois dedos: rolar.
 
+Entre os botões `Clique esquerdo` e `Clique direito` há uma **rodinha**, como a de um mouse: deslize o dedo sobre ela para cima ou para baixo para rolar a página. Um deslize rápido deixa a roda girando por inércia; toque nela para parar. O celular dá um leve toque de vibração a cada degrau, se a vibração de toque estiver ligada no Android.
+
 Também dá para segurar o botão esquerdo da tela e mover outro dedo no touchpad para arrastar. `Digitar` abre o teclado do celular: revise o texto e toque em `Enviar`. Não é enviado Enter automaticamente. Os atalhos agem no PC.
 
 ## Bloquear um celular ou trocar de PC
@@ -44,7 +46,7 @@ No PC, abra a bandeja e escolha `Dispositivos > Revogar: nome do celular`. Confi
 
 No celular, `Esquecer este PC` apaga a autorização local. Para um aparelho perdido, a revogação deve ser feita no PC. O app guarda um PC por vez; o Windows pode autorizar vários celulares, com um controlador conectado por vez.
 
-Em outro computador, faça um novo pareamento. Não copie a pasta privada de credenciais nem a chave de assinatura. Para remover o agente, desative o início com Windows, escolha `Sair` e apague o executável. O registro privado fica em `%LOCALAPPDATA%\SofaPad\credentials.dpapi`; apagá-lo elimina todas as autorizações e a identidade, exigindo parear novamente.
+Em outro computador, faça um novo pareamento. Não copie a pasta privada de credenciais nem a chave de assinatura. Para remover o agente, desmarque `Iniciar com o Windows`, escolha `Sair` e apague o executável. O registro privado fica em `%LOCALAPPDATA%\SofaPad\credentials.dpapi`; apagá-lo elimina todas as autorizações e a identidade, exigindo parear novamente.
 
 ## Se não conectar
 

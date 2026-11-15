@@ -41,6 +41,13 @@ class Simulator : ViewModel() {
         private set
     var credentialError by mutableStateOf("")
         private set
+    var pairingBusy by mutableStateOf(false)
+        private set
+    var pairingStage by mutableStateOf(PairingStage.CONNECTING)
+        private set
+    var pairingError by mutableStateOf("")
+        private set
+    private var activePairing: PairingClient? = null
     private var credentialsLoaded = false
     private var credentialStore: CredentialStore? = null
     private val credentialMutex = Mutex()
@@ -64,6 +71,39 @@ class Simulator : ViewModel() {
     fun paired(config: ConnectionSettings) {
         pairedPc = config; credentialError = ""
         connect(config, ::post)
+    }
+    fun reportPairingError(message: String) {
+        pairingError = message
+    }
+    fun startPairing(config: ConnectionSettings, code: String, name: String) {
+        if (pairingBusy || state.textPending) return
+        // O agente atende uma conexão por vez; encerrar o controle antes de parear novamente.
+        simulation()
+        pairingBusy = true
+        pairingError = ""
+        pairingStage = PairingStage.CONNECTING
+        lateinit var client: PairingClient
+        client = PairingClient { stage -> post { if (activePairing === client) pairingStage = stage } }
+        activePairing = client
+        viewModelScope.launch {
+            try {
+                val pairedConfig = withContext(Dispatchers.IO) { client.pair(config, code, name) }
+                if (activePairing === client) pairingStage = PairingStage.SAVING
+                savePair(pairedConfig)
+                if (!foreground) pause()
+                show(Screen.CONTROL)
+            } catch (error: Exception) {
+                if (error is kotlinx.coroutines.CancellationException) throw error
+                pairingError = (error as? PairingException)?.message ?: PairingFailure.UNKNOWN.message
+            } finally {
+                client.close()
+                if (activePairing === client) activePairing = null
+                pairingBusy = false
+            }
+        }
+    }
+    fun cancelPairing() {
+        activePairing?.close()
     }
     suspend fun savePair(config: ConnectionSettings) {
         try {
@@ -202,5 +242,5 @@ class Simulator : ViewModel() {
         return true
     }
 
-    override fun onCleared() { releaseAll(); connectionGeneration++; remote?.close() }
+    override fun onCleared() { activePairing?.close(); releaseAll(); connectionGeneration++; remote?.close() }
 }

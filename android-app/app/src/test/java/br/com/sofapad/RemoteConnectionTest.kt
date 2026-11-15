@@ -151,4 +151,39 @@ class RemoteConnectionTest {
             assertEquals(1, received.get())
         } finally { connection.close(); server.close() }
     }
+
+    @Test fun transientInputErrorReconnectsInsteadOfRejectingIdentityWhileProtocolErrorRejects() {
+        val (server, fingerprint) = tlsServer()
+        val states = LinkedBlockingQueue<LinkState>()
+        val uncertain = LinkedBlockingQueue<Boolean>()
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send("""{"v":1,"type":"hello","mode":"control","authorized":true}""") }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                webSocket.send("""{"v":1,"type":"error","code":"INPUT_ERROR"}""")
+                webSocket.close(1000, null)
+            }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
+        }))
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send("""{"v":1,"type":"hello","mode":"control","authorized":true}""") }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                webSocket.send("""{"v":1,"type":"error","code":"UNSUPPORTED_VERSION"}""")
+                webSocket.close(1000, null)
+            }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
+        }))
+        val connection = RemoteConnection({ states.offer(it) }, {}, { uncertain.offer(true) })
+        try {
+            connection.connect(ConnectionSettings("127.0.0.1", server.port, fingerprint, token))
+            awaitState(states, LinkState.READY)
+            assertTrue(connection.submit(Command.Text("em janela elevada")))
+            assertEquals(true, uncertain.poll(5, TimeUnit.SECONDS))
+            awaitState(states, LinkState.RECONNECTING)
+            awaitState(states, LinkState.READY)
+            assertFalse(states.contains(LinkState.REJECTED))
+
+            assertTrue(connection.submit(Command.Key(Shortcut.ESC)))
+            awaitState(states, LinkState.REJECTED)
+        } finally { connection.close(); server.close() }
+    }
 }

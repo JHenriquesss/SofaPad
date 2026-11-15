@@ -54,17 +54,22 @@ unsafe extern "system" fn procedure(
             if menu.is_null() {
                 return 0;
             }
+            let starts_with_windows = startup_enabled();
             let items = [
                 (1, "Status"),
                 (2, "Parear celular"),
                 (3, "Cancelar pareamento"),
-                (4, "Iniciar com Windows"),
-                (5, "Desativar início com Windows"),
+                (4, "Iniciar com o Windows"),
                 (6, "Sair"),
             ];
             for (id, label) in items {
+                let checked = if id == 4 && starts_with_windows {
+                    MF_CHECKED
+                } else {
+                    0
+                };
                 unsafe {
-                    AppendMenuW(menu, MF_STRING, id, wide(label).as_ptr());
+                    AppendMenuW(menu, MF_STRING | checked, id, wide(label).as_ptr());
                 }
             }
             let devices = runtime.vault.devices();
@@ -152,8 +157,8 @@ unsafe extern "system" fn procedure(
                     }
                 }
                 3 => runtime.vault.cancel_pairing(),
-                4 | 5 => {
-                    if set_startup(selection == 4).is_err() {
+                4 => {
+                    if set_startup(!starts_with_windows).is_err() {
                         dialog(
                             "Não foi possível alterar a inicialização. Mantenha o agente em uma pasta permanente e tente novamente.",
                             MB_OK | MB_ICONERROR,
@@ -240,7 +245,16 @@ pub fn run(runtime: Arc<Runtime>) -> io::Result<()> {
         if window.is_null() {
             return Err(io::Error::last_os_error());
         }
-        if !icon(window, NIM_ADD) {
+        // Logo após o login a barra de tarefas pode ainda não aceitar ícones: insistir por 30 s.
+        let mut added = icon(window, NIM_ADD);
+        for _ in 0..60 {
+            if added {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            added = icon(window, NIM_ADD);
+        }
+        if !added {
             DestroyWindow(window);
             return Err(io::Error::other(
                 "Não foi possível criar o ícone de bandeja",
