@@ -21,12 +21,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -37,6 +43,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -48,6 +55,11 @@ private val Pad = Color(0xFFBDD2E1)
 private val Accent = Color(0xFF1680BD)
 private const val TAP_TIMEOUT_MS = 300L
 private const val DOUBLE_TAP_MS = 250L
+// Um degrau da roda do mouse (três linhas no Windows) a cada 18 dp de dedo.
+private val WHEEL_NOTCH = 18.dp
+private val WHEEL_MIN_FLING = 160.dp
+private val WHEEL_MAX_FLING = 2600.dp
+private const val WHEEL_FRICTION = 3.2f
 
 @Composable
 fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: (UiPreferences) -> Unit) {
@@ -132,36 +144,123 @@ internal fun ControlSurface(simulator: Simulator, preferences: UiPreferences, la
     } else {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Touchpad(simulator, preferences.sensitivity, Modifier.weight(1f).fillMaxWidth())
-            MouseButtons(simulator, Modifier.fillMaxWidth().height(80.dp))
+            MouseButtons(simulator, Modifier.fillMaxWidth().height(96.dp))
         }
     }
 }
 
 @Composable
 private fun MouseButtons(simulator: Simulator, modifier: Modifier) {
+    // Como num mouse: esquerdo, rodinha, direito.
     Row(modifier.testTag("mouse_buttons"), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        MouseButton.entries.forEach { button ->
-            val pressed = if (button == MouseButton.LEFT) simulator.state.leftDown else simulator.state.rightDown
-            val label = if (button == MouseButton.LEFT) "Clique esquerdo" else "Clique direito"
-            Box(
-                Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(12.dp))
-                    .background(if (pressed) Accent else Color(0xFF3A5A76))
-                    .testTag(if (button == MouseButton.LEFT) "left_button" else "right_button")
-                    .semantics { contentDescription = label }
-                    .pointerInput(simulator, button) {
-                        awaitEachGesture {
-                            val down = awaitFirstDown(requireUnconsumed = false)
-                            simulator.dispatch(Command.Button(button, true))
-                            try {
-                                do {
-                                    val event = awaitPointerEvent()
-                                    event.changes.forEach { it.consume() }
-                                } while (event.changes.any { it.id == down.id && it.pressed })
-                            } finally { simulator.dispatch(Command.Button(button, false)) }
+        MouseButtonPad(simulator, MouseButton.LEFT, Modifier.weight(1f).fillMaxHeight())
+        ScrollWheel(simulator, Modifier.weight(0.5f).fillMaxHeight())
+        MouseButtonPad(simulator, MouseButton.RIGHT, Modifier.weight(1f).fillMaxHeight())
+    }
+}
+
+@Composable
+private fun MouseButtonPad(simulator: Simulator, button: MouseButton, modifier: Modifier) {
+    val pressed = if (button == MouseButton.LEFT) simulator.state.leftDown else simulator.state.rightDown
+    val label = if (button == MouseButton.LEFT) "Clique esquerdo" else "Clique direito"
+    Box(
+        modifier.clip(RoundedCornerShape(12.dp))
+            .background(if (pressed) Accent else Color(0xFF3A5A76))
+            .testTag(if (button == MouseButton.LEFT) "left_button" else "right_button")
+            .semantics { contentDescription = label }
+            .pointerInput(simulator, button) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    simulator.dispatch(Command.Button(button, true))
+                    try {
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                        } while (event.changes.any { it.id == down.id && it.pressed })
+                    } finally { simulator.dispatch(Command.Button(button, false)) }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) { Text(label, Modifier.padding(8.dp), fontSize = 14.sp, textAlign = TextAlign.Center) }
+}
+
+/**
+ * Rodinha entre os botões: deslizar o dedo gira a roda e rola a página no mesmo sentido de um
+ * mouse (dedo para baixo, página desce). Soltar em movimento deixa a roda girando por inércia;
+ * tocar de novo a segura.
+ */
+@Composable
+private fun ScrollWheel(simulator: Simulator, modifier: Modifier) {
+    val haptics = LocalHapticFeedback.current
+    var turn by remember { mutableFloatStateOf(0f) }
+    Canvas(
+        modifier.clip(RoundedCornerShape(50)).testTag("scroll_wheel")
+            .semantics { contentDescription = "Rodinha de rolagem. Deslize para cima ou para baixo para rolar a página." }
+            .pointerInput(simulator) {
+                val notch = WHEEL_NOTCH.toPx()
+                val minFling = WHEEL_MIN_FLING.toPx()
+                val maxFling = WHEEL_MAX_FLING.toPx()
+                var sinceTick = 0f
+                fun roll(dy: Float): Boolean {
+                    if (dy == 0f) return true
+                    if (!simulator.dispatch(Command.Scroll((-dy / notch).coerceIn(-120f, 120f)))) return false
+                    turn += dy
+                    sinceTick += dy
+                    if (abs(sinceTick) >= notch) {
+                        sinceTick %= notch
+                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    }
+                    return true
+                }
+                coroutineScope {
+                    val scope = this
+                    var fling: Job? = null
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        fling?.cancel(); fling = null
+                        down.consume()
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        var travel = 0f
+                        var rolling = false
+                        var connected = true
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            // Inclui o instante de soltar: dedo parado antes de sair zera a inércia.
+                            if (change != null) tracker.addPosition(change.uptimeMillis, change.position)
+                            if (change != null && change.pressed) {
+                                val dy = change.positionChange().y
+                                // O trecho dentro da zona de toque é descartado: pousar o dedo não rola.
+                                if (rolling) connected = roll(dy) && connected
+                                else { travel += dy; rolling = abs(travel) > viewConfiguration.touchSlop }
+                            }
+                            event.changes.forEach { it.consume() }
+                        } while (change != null && change.pressed)
+                        val speed = tracker.calculateVelocity().y.coerceIn(-maxFling, maxFling)
+                        if (rolling && connected && abs(speed) > minFling) fling = scope.launch {
+                            var velocity = speed
+                            var last = withFrameNanos { it }
+                            while (abs(velocity) > minFling / 4) {
+                                val now = withFrameNanos { it }
+                                val seconds = (now - last) / 1e9f
+                                last = now
+                                // Quadro muito atrasado (app em segundo plano): a roda para em vez de saltar.
+                                if (seconds > 0.1f || !roll(velocity * seconds)) break
+                                velocity *= exp(-WHEEL_FRICTION * seconds)
+                            }
                         }
-                    },
-                contentAlignment = Alignment.Center,
-            ) { Text(label, Modifier.padding(8.dp), fontSize = 14.sp) }
+                    }
+                }
+            },
+    ) {
+        drawRect(Brush.verticalGradient(listOf(Color(0xFF16222F), Color(0xFF4A6E8C), Color(0xFF16222F))))
+        val gap = 12.dp.toPx()
+        val inset = size.width * 0.22f
+        var y = ((turn % gap) + gap) % gap
+        while (y < size.height) {
+            drawLine(Color(0x99DCEBF5), Offset(inset, y), Offset(size.width - inset, y), 2.dp.toPx(), StrokeCap.Round)
+            y += gap
         }
     }
 }

@@ -71,7 +71,7 @@ Os testes verificam posições dos controles, cancelamento de botão, texto com 
 cargo run --locked --manifest-path windows-agent/Cargo.toml
 ```
 
-No Windows, sem argumentos, abre a bandeja. Use o build release para execução sem console, escolha `Parear celular` e siga [como usar](uso-domestico.md). A inicialização após login é opcional e só é alterada quando escolhida no menu.
+No Windows, sem argumentos, abre a bandeja. Use o build release para execução sem console, escolha `Parear celular` e siga [como usar](uso-domestico.md). O build release registra a inicialização após login ao ser aberto (desmarque `Iniciar com o Windows` no menu para desligar); o build debug nunca se registra.
 
 Para simulação local, execute `cargo run --locked --manifest-path windows-agent/Cargo.toml -- --simulate`. O endpoint `ws://127.0.0.1:49375/v1/simulate` nunca controla o Windows; encerre com Ctrl+C no build debug. A opção legada `--control` mantém a autorização temporária para diagnóstico; o app atual usa o pareamento persistente.
 

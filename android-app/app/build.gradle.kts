@@ -11,8 +11,8 @@ android {
         applicationId = "br.com.sofapad"
         minSdk = 29
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.3.5-desenvolvimento"
+        versionCode = 9
+        versionName = "0.3.6-desenvolvimento"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures { compose = true }

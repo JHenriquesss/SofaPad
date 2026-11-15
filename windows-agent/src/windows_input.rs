@@ -148,6 +148,10 @@ impl InputController for WindowsInput {
                 self.wheel_remainder += vertical * 120.0;
                 let delta = self.wheel_remainder.trunc() as i32;
                 self.wheel_remainder -= delta as f64;
+                // Rolagem fina (rodinha em inércia) acumula frações; nada a enviar ainda.
+                if delta == 0 {
+                    return Ok(());
+                }
                 vec![Event::Wheel(delta)]
             }
             Command::Shortcut { .. } | Command::TextInsert { .. } | Command::Media { .. } => {

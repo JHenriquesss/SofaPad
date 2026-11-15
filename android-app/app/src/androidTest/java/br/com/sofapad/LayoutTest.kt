@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.*
@@ -32,6 +33,7 @@ class LayoutTest {
         assertTrue(pad.bottom <= left.top)
         assertTrue(left.right <= right.left)
         assertEquals(left.top, right.top, 1f)
+        assertWheelBetween(left, right)
     }
 
     @Test fun landscapeKeepsSideBySideButtonsToTheLeft() {
@@ -42,6 +44,15 @@ class LayoutTest {
         assertTrue(left.right <= right.left)
         assertTrue(right.right <= pad.left)
         assertEquals(left.top, right.top, 1f)
+        assertWheelBetween(left, right)
+    }
+
+    private fun assertWheelBetween(left: androidx.compose.ui.geometry.Rect, right: androidx.compose.ui.geometry.Rect) {
+        val wheel = compose.onNodeWithTag("scroll_wheel").fetchSemanticsNode().boundsInRoot
+        assertTrue(left.right <= wheel.left)
+        assertTrue(wheel.right <= right.left)
+        assertEquals(left.top, wheel.top, 1f)
+        assertEquals(left.bottom, wheel.bottom, 1f)
     }
 
     @Test fun leftHandedLandscapeReversesGroups() {
@@ -60,5 +71,16 @@ class LayoutTest {
         compose.runOnIdle { assertTrue(simulator.state.leftDown) }
         compose.onNodeWithTag("left_button").performTouchInput { cancel() }
         compose.runOnIdle { assertFalse(simulator.state.leftDown) }
+    }
+
+    @Test fun connectionPanelPreservesTypedFieldsAcrossRotation() {
+        val restoration = StateRestorationTester(compose)
+        val simulator = Simulator()
+        restoration.setContent { MaterialTheme { androidx.compose.foundation.layout.Column { ConnectionPanel(simulator) } } }
+        compose.onNodeWithText("IP do PC").performTextInput("192.168.1.50")
+        compose.onNodeWithText("Código de 8 caracteres do PC").performTextInput("a1b2c3d4")
+        restoration.emulateSavedInstanceStateRestore()
+        compose.onNodeWithText("192.168.1.50").assertExists()
+        compose.onNodeWithText("a1b2c3d4").assertExists()
     }
 }

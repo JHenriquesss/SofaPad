@@ -220,6 +220,7 @@ class RemoteConnection(
                 onAck(command)
                 drain()
             }
+            "error" -> fail(value["code"]?.jsonPrimitive?.content !in RECOVERABLE_ERRORS)
             else -> fail(true)
         }
     }
@@ -262,6 +263,7 @@ class RemoteConnection(
         const val BURST = 20.0
         const val MAX_IN_FLIGHT = 32
         val RETRY_DELAYS_MS = longArrayOf(250, 1000, 2000, 4000, 8000)
+        val RECOVERABLE_ERRORS = setOf("INPUT_ERROR", "RATE_LIMIT", "SESSION_CLOSED")
     }
 
     override fun close() {

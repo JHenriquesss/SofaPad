@@ -4,34 +4,36 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun ConnectionPanel(simulator: Simulator) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var host by remember { mutableStateOf("") }
-    var port by remember { mutableStateOf("49375") }
-    var fingerprint by remember { mutableStateOf("") }
-    var identityChecked by remember { mutableStateOf(false) }
-    var code by remember { mutableStateOf("") }
-    var name by remember { mutableStateOf("Meu celular") }
-    var error by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var pairing by remember { mutableStateOf<PairingClient?>(null) }
-    var pairingStage by remember { mutableStateOf(PairingStage.CONNECTING) }
+    var host by rememberSaveable { mutableStateOf("") }
+    var port by rememberSaveable { mutableStateOf("49375") }
+    var fingerprint by rememberSaveable { mutableStateOf("") }
+    var identityChecked by rememberSaveable { mutableStateOf(false) }
+    var code by rememberSaveable { mutableStateOf("") }
+    var name by rememberSaveable { mutableStateOf("Meu celular") }
+    val busy = simulator.pairingBusy
+    val error = simulator.pairingError
     var devices by remember { mutableStateOf(emptyList<DiscoveredPc>()) }
     val discovery = remember { PcDiscovery(context) { found -> devices = found } }
-    DisposableEffect(discovery) { onDispose { discovery.close(); pairing?.close() } }
-    Text("Conexão com o PC", style = MaterialTheme.typography.titleMedium)
+    DisposableEffect(discovery) { onDispose { discovery.close() } }
     val saved = simulator.pairedPc
+    var lastPaired by remember { mutableStateOf(saved) }
+    LaunchedEffect(saved) {
+        if (saved != null && saved !== lastPaired) {
+            code = ""
+            lastPaired = saved
+        }
+    }
+    Text("Conexão com o PC", style = MaterialTheme.typography.titleMedium)
     if (saved != null) {
         Text("Autorização salva neste celular. Ao abrir o app, a conexão é automática na mesma rede Wi-Fi.", fontSize = 13.sp)
         Text("Endereço conhecido: ${saved.host}:${saved.port}", fontSize = 12.sp)
@@ -70,33 +72,16 @@ fun ConnectionPanel(simulator: Simulator) {
     OutlinedTextField(value = code, onValueChange = { code = it.filterNot(Char::isWhitespace).lowercase() }, enabled = !busy, label = { Text("Código de 8 caracteres do PC") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = name, onValueChange = { name = it.take(48) }, enabled = !busy, label = { Text("Nome deste celular") }, singleLine = true, modifier = Modifier.fillMaxWidth())
     if (error.isNotEmpty()) Text(error, color = MaterialTheme.colorScheme.error)
-    if (busy) Text(pairingStage.label, fontSize = 13.sp)
+    if (busy) Text(simulator.pairingStage.label, fontSize = 13.sp)
     Button(onClick = {
         val config = runCatching {
             require(identityChecked && code.matches(Regex("[a-f0-9]{8}")) && name.isNotBlank() && name.none(Char::isISOControl))
             ConnectionSettings(host, port.toInt(), fingerprint, "0".repeat(64), true)
         }.getOrNull()
-        if (config == null) error = "Confira IP local, porta, identidade completa de 64 caracteres, código e nome. Marque a confirmação da identidade."
-        else {
-            // O agente atende uma conexão por vez; encerrar o controle antes de parear novamente.
-            simulator.simulation()
-            busy = true; error = ""
-            pairingStage = PairingStage.CONNECTING
-            val client = PairingClient { stage -> scope.launch { pairingStage = stage } }; pairing = client
-            val pairCode = code; val pairName = name
-            scope.launch {
-                try {
-                    val result = withContext(Dispatchers.IO) {
-                        runCatching { client.pair(config, pairCode, pairName) }
-                    }
-                    result.mapCatching { pairingStage = PairingStage.SAVING; simulator.savePair(it) }
-                        .onSuccess { code = ""; simulator.show(Screen.CONTROL) }
-                        .onFailure { error = (it as? PairingException)?.message ?: PairingFailure.UNKNOWN.message }
-                } finally { client.close(); pairing = null; busy = false }
-            }
-        }
+        if (config == null) simulator.reportPairingError("Confira IP local, porta, identidade completa de 64 caracteres, código e nome. Marque a confirmação da identidade.")
+        else simulator.startPairing(config, code, name)
     }, enabled = !busy && !simulator.state.textPending, modifier = Modifier.fillMaxWidth()) { Text("Parear e salvar autorização") }
-    if (busy) OutlinedButton(onClick = { pairing?.close() }) { Text("Cancelar pareamento") }
+    if (busy) OutlinedButton(onClick = { simulator.cancelPairing() }) { Text("Cancelar pareamento") }
     if (simulator.state.remoteMode) {
         OutlinedButton(onClick = { simulator.reconnect() }, enabled = !simulator.state.textPending && !busy) { Text("Tentar novamente") }
         OutlinedButton(onClick = { simulator.simulation() }, enabled = !busy) { Text("Desconectar e usar simulação") }
