@@ -68,4 +68,28 @@ class ProtocolTest {
         simulator.click()
         assertTrue(simulator.state.leftDown)
     }
+
+    @Test fun tapAndHoldDragsWithLeftButtonAndQuickSecondTapIsDoubleClick() {
+        val simulator = Simulator()
+        assertTrue(simulator.tapDragStart())
+        assertTrue(simulator.state.leftDown)
+        simulator.tapDragEnd(doubleTap = false)
+        assertFalse(simulator.state.leftDown)
+        val before = simulator.state.eventCount
+        assertTrue(simulator.tapDragStart())
+        simulator.tapDragEnd(doubleTap = true)
+        assertFalse(simulator.state.leftDown)
+        assertEquals("pressiona, solta e clica de novo", before + 4, simulator.state.eventCount)
+    }
+
+    @Test fun tapDragDoesNotTakeOverPhysicalLeftButtonAndTwoFingerTapRightClicks() {
+        val simulator = Simulator()
+        simulator.dispatch(Command.Button(MouseButton.LEFT, true))
+        assertFalse(simulator.tapDragStart())
+        assertTrue(simulator.state.leftDown)
+        val before = simulator.state.eventCount
+        simulator.rightClick()
+        assertFalse(simulator.state.rightDown)
+        assertEquals(before + 2, simulator.state.eventCount)
+    }
 }

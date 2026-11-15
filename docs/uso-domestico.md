@@ -1,6 +1,6 @@
 # Como usar o SofaPad
 
-Agente Windows e APK Android 0.3.4 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.4 e APK Android 0.3.5 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
@@ -28,7 +28,15 @@ Abra o SofaPad no celular. A autorização é recuperada e o app tenta reconecta
 
 O PC precisa estar ligado e com o usuário já conectado ao Windows. Para não abrir o programa manualmente todo dia, escolha `Iniciar com Windows` na bandeja. A opção vale só para esse usuário e não pede administrador. `Desativar início com Windows` desfaz essa escolha; mantenha o executável na mesma pasta.
 
-Deslize no touchpad para mover o cursor. Segure o botão esquerdo e mova outro dedo para arrastar. `Digitar` abre o teclado do celular: revise o texto e toque em `Enviar`. Não é enviado Enter automaticamente. Os atalhos agem no PC.
+Deslize no touchpad para mover o cursor. Gestos do touchpad, como no notebook:
+
+- Toque com um dedo: clique esquerdo. O clique sai um instante depois (um quarto de segundo), o tempo de saber se vem um segundo toque.
+- Toque, e logo em seguida toque de novo e segure: o botão esquerdo fica pressionado enquanto o dedo desliza, para arrastar janelas, arquivos ou selecionar texto. Solte o dedo para soltar.
+- Dois toques rápidos: clique duplo.
+- Toque com dois dedos: clique direito.
+- Deslize com dois dedos: rolar.
+
+Também dá para segurar o botão esquerdo da tela e mover outro dedo no touchpad para arrastar. `Digitar` abre o teclado do celular: revise o texto e toque em `Enviar`. Não é enviado Enter automaticamente. Os atalhos agem no PC.
 
 ## Bloquear um celular ou trocar de PC
 
