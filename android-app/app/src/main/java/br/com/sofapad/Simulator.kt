@@ -29,6 +29,11 @@ data class SimulationState(
     val link: LinkState = LinkState.DISCONNECTED,
     val textPending: Boolean = false,
     val deliveryWarning: String = "",
+    /** Digitação em tempo real ligada; desligada por padrão. */
+    val liveTyping: Boolean = false,
+    /** O que o PC recebeu nesta sessão de tempo real (o campo mostra exatamente isto). */
+    val liveText: String = "",
+    val liveWarning: String = "",
 )
 
 class Simulator : ViewModel() {
@@ -137,37 +142,45 @@ class Simulator : ViewModel() {
     fun connect(settings: ConnectionSettings, post: (() -> Unit) -> Unit) {
         val generation = ++connectionGeneration
         remote?.close()
-        state = state.copy(remoteMode = true, sentText = "", leftDown = false, rightDown = false)
+        state = state.copy(remoteMode = true, sentText = "", leftDown = false, rightDown = false, liveText = "", liveWarning = "")
         remote = RemoteConnection(
             onState = { value -> post { if (generation == connectionGeneration) state = state.copy(
                 link = value, leftDown = false, rightDown = false,
                 textPending = value == LinkState.READY && state.textPending,
                 deliveryWarning = if (value != LinkState.READY && state.textPending) "Envio não confirmado. Confira o texto no PC antes de tentar novamente." else state.deliveryWarning,
             ) } },
-            onAck = { command -> if (command is Command.Text) post {
+            onAck = { command -> if (command is Command.Text && !command.live) post {
                 if (generation == connectionGeneration) {
                     state = state.copy(textPending = false, deliveryWarning = "", event = "Texto inserido no PC, sem Enter.")
                     show(Screen.CONTROL)
                 }
             } },
-            onUncertainText = { post { if (generation == connectionGeneration) state = state.copy(textPending = false, deliveryWarning = "Envio não confirmado. Confira o texto no PC antes de tentar novamente.") } },
+            onUncertainText = { post { if (generation == connectionGeneration) state =
+                if (state.textPending || !state.liveTyping) state.copy(textPending = false, deliveryWarning = "Envio não confirmado. Confira o texto no PC antes de tentar novamente.")
+                // Não se sabe o que chegou: recomeçar do zero em vez de apagar às cegas no PC.
+                else state.copy(liveText = "", liveWarning = LIVE_UNCERTAIN)
+            } },
         ).also { it.connect(settings) }
     }
 
     fun simulation() {
         connectionGeneration++
         remote?.close(); remote = null
-        state = SimulationState(screen = state.screen)
+        state = SimulationState(screen = state.screen, liveTyping = state.liveTyping)
     }
 
-    fun pause() { foreground = false; releaseAll(); remote?.pause() }
+    fun pause() {
+        foreground = false; releaseAll(); remote?.pause()
+        // Fora do app o foco do PC pode mudar: ao voltar, o tempo real recomeça com o campo vazio.
+        state = state.copy(liveText = "")
+    }
     fun resume() { foreground = true; remote?.resume() }
     fun reconnect() { remote?.reconnect() }
     fun networkAvailable() { if (foreground) remote?.networkAvailable() }
 
     fun show(screen: Screen) {
         releaseAll()
-        state = state.copy(screen = screen)
+        state = state.copy(screen = screen, liveText = "", liveWarning = "")
     }
 
     fun dispatch(command: Command): Boolean {
@@ -179,7 +192,7 @@ class Simulator : ViewModel() {
             }
             state = when (command) {
                 is Command.Button -> state.copy(leftDown = if (command.button == MouseButton.LEFT) command.down else state.leftDown, rightDown = if (command.button == MouseButton.RIGHT) command.down else state.rightDown)
-                is Command.Text -> state.copy(textPending = true, deliveryWarning = "", event = "Aguardando confirmação do PC…")
+                is Command.Text -> if (command.live) state else state.copy(textPending = true, deliveryWarning = "", event = "Aguardando confirmação do PC…")
                 Command.ReleaseAll -> state.copy(leftDown = false, rightDown = false)
                 else -> state
             }
@@ -195,10 +208,11 @@ class Simulator : ViewModel() {
             is Command.Button -> current.copy(
                 leftDown = if (command.button == MouseButton.LEFT) command.down else current.leftDown,
                 rightDown = if (command.button == MouseButton.RIGHT) command.down else current.rightDown,
-                event = "Clique ${if (command.button == MouseButton.LEFT) "esquerdo" else "direito"}: ${if (command.down) "pressionado" else "liberado"}.",
+                event = "Clique ${command.button.label}: ${if (command.down) "pressionado" else "liberado"}.",
             )
             is Command.Scroll -> current.copy(event = "Rolagem ${if (command.vertical > 0) "para cima" else "para baixo"} (simulação).")
-            is Command.Text -> current.copy(sentText = command.text, event = "Texto enviado à prévia, sem Enter.")
+            is Command.Text -> if (command.live) current.copy(event = "Digitando em tempo real (simulação).")
+                else current.copy(sentText = command.text, event = "Texto enviado à prévia, sem Enter.")
             is Command.Key -> current.copy(event = "Atalho no PC simulado: ${command.name.label}")
             is Command.MediaKey -> current.copy(event = when (command.name) {
                 Media.PLAY_PAUSE -> "Reproduzir/pausar (simulação)."
@@ -224,6 +238,11 @@ class Simulator : ViewModel() {
         dispatch(Command.Button(MouseButton.RIGHT, false))
     }
 
+    /** Clique do meio completo (duplo toque na rodinha): abre links em nova aba, fecha abas. */
+    fun middleClick() {
+        if (dispatch(Command.Button(MouseButton.MIDDLE, true))) dispatch(Command.Button(MouseButton.MIDDLE, false))
+    }
+
     /** Toque e logo toque-e-segure: pressiona o esquerdo para arrastar, como no touchpad de notebook. */
     fun tapDragStart(): Boolean = !state.leftDown && dispatch(Command.Button(MouseButton.LEFT, true))
 
@@ -234,6 +253,46 @@ class Simulator : ViewModel() {
     }
 
     fun releaseAll() = dispatch(Command.ReleaseAll)
+
+    /** Liga ou desliga o tempo real. O texto já digitado fica no PC; o campo recomeça vazio. */
+    fun setLiveTyping(on: Boolean) {
+        if (state.textPending) return
+        state = state.copy(liveTyping = on, liveText = "", liveWarning = "")
+    }
+
+    /**
+     * Novo conteúdo do campo em tempo real. Retorna false quando a edição foi recusada;
+     * o campo mostra [SimulationState.liveText], então volta sozinho ao que o PC tem.
+     */
+    fun liveEdit(next: String): Boolean {
+        if (!state.liveTyping || state.textPending) return false
+        // O campo repete o valor atual (ex.: logo após uma recusa): nada a enviar, e o aviso fica.
+        if (next == state.liveText) return true
+        if (state.remoteMode && state.link != LinkState.READY) {
+            state = state.copy(liveWarning = "Sem conexão com o PC: nada foi enviado.")
+            return false
+        }
+        val plan = when (val result = LiveTyping.plan(state.liveText, next)) {
+            is LiveTyping.Plan.Reject -> { state = state.copy(liveWarning = result.reason); return false }
+            is LiveTyping.Plan.Send -> result
+        }
+        val commands = buildList {
+            repeat(plan.backspaces) { add(Command.Key(Shortcut.BACKSPACE)) }
+            if (plan.insert.isNotEmpty()) add(Command.Text(plan.insert, live = true))
+            if (plan.enter) add(Command.Key(Shortcut.ENTER))
+        }
+        for (command in commands) if (!dispatch(command)) {
+            state = state.copy(liveText = "", liveWarning = LIVE_UNCERTAIN)
+            return false
+        }
+        val mirrored = if (plan.enter) "" else next
+        state = state.copy(liveText = mirrored, liveWarning = "", sentText = if (state.remoteMode) state.sentText else mirrored)
+        return true
+    }
+
+    private companion object {
+        const val LIVE_UNCERTAIN = "A conexão falhou durante a digitação. Confira o texto no PC; o campo recomeçou vazio."
+    }
 
     fun sendText(text: String): Boolean {
         if (text.isNotEmpty() && !dispatch(Command.Text(text))) return false

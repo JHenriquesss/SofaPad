@@ -10,6 +10,7 @@ pub const MAX_COMMANDS_PER_SECOND: u32 = 240;
 pub enum Button {
     Left,
     Right,
+    Middle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]

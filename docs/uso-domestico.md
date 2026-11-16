@@ -1,10 +1,10 @@
 # Como usar o SofaPad
 
-Agente Windows 0.3.6 e APK Android 0.3.6 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.7 e APK Android 0.3.7 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.6.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+1. Coloque `SofaPad-agent-0.3.7.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
 2. Abra o programa. O ícone SofaPad aparece perto do relógio; pode estar dentro da seta de ícones ocultos. O build release não abre console.
 3. Se o Windows perguntar sobre firewall, permita somente na sua rede **privada/doméstica**. Não abra portas no roteador. PC e celular precisam estar na mesma rede; Wi-Fi de convidados pode impedir a conexão.
 4. Pelo ícone, abra `Status` para ver o endereço do PC. Depois escolha `Parear celular`.
@@ -36,9 +36,11 @@ Deslize no touchpad para mover o cursor. Gestos do touchpad, como no notebook:
 - Toque com dois dedos: clique direito.
 - Deslize com dois dedos: rolar.
 
-Entre os botões `Clique esquerdo` e `Clique direito` há uma **rodinha**, como a de um mouse: deslize o dedo sobre ela para cima ou para baixo para rolar a página. Um deslize rápido deixa a roda girando por inércia; toque nela para parar. O celular dá um leve toque de vibração a cada degrau, se a vibração de toque estiver ligada no Android.
+Entre os botões `Clique esquerdo` e `Clique direito` há uma **rodinha**, como a de um mouse: deslize o dedo sobre ela para cima ou para baixo para rolar a página. Um deslize rápido deixa a roda girando por inércia; toque nela para parar. **Dois toques rápidos** na rodinha fazem o **clique do meio**, como apertar a roda de um mouse: no navegador, abre um link em nova aba ou fecha a aba sob o cursor. O celular dá um leve toque de vibração a cada degrau, se a vibração de toque estiver ligada no Android.
 
 Também dá para segurar o botão esquerdo da tela e mover outro dedo no touchpad para arrastar. `Digitar` abre o teclado do celular: revise o texto e toque em `Enviar`. Não é enviado Enter automaticamente. Os atalhos agem no PC.
+
+Para ver o texto aparecer no PC enquanto digita, toque em **`Tempo real`** (no começo da fileira de atalhos, com o campo vazio). Cada letra vai direto para a janela ativa do PC, e o Enter do teclado do celular pressiona Enter. Antes de digitar, confira se o cursor do PC está no campo certo: se outra janela pegar o foco, as letras vão para ela. Para proteger o texto do PC, algumas edições são recusadas (o campo volta ao que o PC tem e aparece um aviso): apagar mais de 32 letras de uma vez, apagar emoji composto (como 👍🏽 ou bandeiras) e quebrar linha no meio do texto. Nesses casos, apague no próprio PC. Se a conexão cair ou o app for para segundo plano, o campo recomeça vazio; confira no PC o que chegou. `Tempo real` vem desligado e fica como você deixou enquanto o app estiver aberto.
 
 ## Bloquear um celular ou trocar de PC
 

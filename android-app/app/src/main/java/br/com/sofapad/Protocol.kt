@@ -4,7 +4,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-enum class MouseButton(val wire: String) { LEFT("left"), RIGHT("right") }
+enum class MouseButton(val wire: String, val label: String) {
+    LEFT("left", "esquerdo"), RIGHT("right", "direito"), MIDDLE("middle", "do meio")
+}
 enum class Shortcut(val label: String) {
     ALT_TAB("Alt+Tab"), CTRL_C("Ctrl+C"), CTRL_V("Ctrl+V"), CTRL_A("Ctrl+A"),
     ENTER("Enter"), ESC("Esc"), BACKSPACE("⌫")
@@ -15,7 +17,8 @@ sealed interface Command {
     data class Move(val dx: Float, val dy: Float) : Command
     data class Button(val button: MouseButton, val down: Boolean) : Command
     data class Scroll(val vertical: Float) : Command
-    data class Text(val text: String) : Command
+    /** [live]: veio da digitação em tempo real (sem espera de confirmação nem troca de tela). */
+    data class Text(val text: String, val live: Boolean = false) : Command
     data class Key(val name: Shortcut) : Command
     data class MediaKey(val name: Media) : Command
     data object ReleaseAll : Command

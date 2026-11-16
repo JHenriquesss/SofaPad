@@ -17,5 +17,7 @@
   {"v":1,"type":"media","seq":16,"name":"VOLUME_UP"},
   {"v":1,"type":"media","seq":17,"name":"VOLUME_DOWN"},
   {"v":1,"type":"release_all","seq":18},
-  {"v":1,"type":"ping","seq":19}
+  {"v":1,"type":"ping","seq":19},
+  {"v":1,"type":"mouse_button","seq":20,"button":"middle","state":"down"},
+  {"v":1,"type":"mouse_button","seq":21,"button":"middle","state":"up"}
 ]

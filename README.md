@@ -17,6 +17,7 @@ Funciona sem contas, nuvem ou transmissão de tela. O agente guarda a identidade
 - [Fluidez do cursor e reconexão — 0.3.4](docs/fluidez-conexao-0.3.4.md).
 - [Cursor sem trancos e gestos do touchpad — 0.3.5](docs/gestos-fluidez-0.3.5.md).
 - [Início automático com o Windows e rodinha de rolagem — 0.3.6](docs/inicio-automatico-rodinha-0.3.6.md).
+- [Clique do meio na rodinha e digitação em tempo real — 0.3.7](docs/clique-do-meio-e-tempo-real-0.3.7.md).
 - [Segurança e validação da Etapa C](docs/validacao-etapa-c.md).
 - [Conectar celular e PC na Etapa B](docs/conexao-etapa-b.md).
 - [Testes manuais](docs/testes-manuais.md).

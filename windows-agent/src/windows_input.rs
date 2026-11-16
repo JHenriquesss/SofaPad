@@ -10,6 +10,7 @@ use windows_sys::Win32::UI::Input::KeyboardAndMouse::*;
 pub struct WindowsInput {
     left: bool,
     right: bool,
+    middle: bool,
     keys: BTreeSet<u16>,
     unicode: BTreeSet<u16>,
     remainder_x: f64,
@@ -38,6 +39,8 @@ fn native(event: Event) -> INPUT {
                 (Button::Left, false) => MOUSEEVENTF_LEFTUP,
                 (Button::Right, true) => MOUSEEVENTF_RIGHTDOWN,
                 (Button::Right, false) => MOUSEEVENTF_RIGHTUP,
+                (Button::Middle, true) => MOUSEEVENTF_MIDDLEDOWN,
+                (Button::Middle, false) => MOUSEEVENTF_MIDDLEUP,
             };
             input.Anonymous.mi = MOUSEINPUT {
                 dx: 0,
@@ -80,6 +83,7 @@ impl WindowsInput {
         match event {
             Event::Button(Button::Left, down) => self.left = down,
             Event::Button(Button::Right, down) => self.right = down,
+            Event::Button(Button::Middle, down) => self.middle = down,
             Event::Key(key, down) => {
                 if down {
                     self.keys.insert(key);
@@ -177,6 +181,9 @@ impl InputController for WindowsInput {
         }
         if self.right {
             events.push(Event::Button(Button::Right, false));
+        }
+        if self.middle {
+            events.push(Event::Button(Button::Middle, false));
         }
         events.extend(self.keys.iter().rev().map(|key| Event::Key(*key, false)));
         events.extend(self.unicode.iter().map(|key| Event::Unicode(*key, false)));

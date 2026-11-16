@@ -13,6 +13,7 @@ pub trait InputController {
 pub struct SimulatedInput {
     pub left_down: bool,
     pub right_down: bool,
+    pub middle_down: bool,
     pub applied: u64,
     pub releases: u64,
 }
@@ -24,6 +25,7 @@ impl InputController for SimulatedInput {
             match button {
                 Button::Left => self.left_down = pressed,
                 Button::Right => self.right_down = pressed,
+                Button::Middle => self.middle_down = pressed,
             }
         }
         self.applied += 1;
@@ -33,6 +35,7 @@ impl InputController for SimulatedInput {
     fn release_all(&mut self) -> Result<(), InputError> {
         self.left_down = false;
         self.right_down = false;
+        self.middle_down = false;
         self.releases += 1;
         Ok(())
     }

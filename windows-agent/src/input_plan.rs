@@ -86,6 +86,18 @@ mod tests {
         );
     }
     #[test]
+    fn middle_button_is_a_plain_press_and_release() {
+        for (state, down) in [(ButtonState::Down, true), (ButtonState::Up, false)] {
+            assert_eq!(
+                plan(&Command::MouseButton {
+                    button: Button::Middle,
+                    state
+                }),
+                vec![Event::Button(Button::Middle, down)]
+            );
+        }
+    }
+    #[test]
     fn wheel_uses_windows_units() {
         assert_eq!(
             plan(&Command::MouseScroll { vertical: -2.0 }),
