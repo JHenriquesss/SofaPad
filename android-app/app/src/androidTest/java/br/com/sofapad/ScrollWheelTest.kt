@@ -78,6 +78,41 @@ class ScrollWheelTest {
         assertEquals(held, count())
     }
 
+    private fun TouchInjectionScope.tap(gap: Long) {
+        down(center); advanceEventTime(60); up(); advanceEventTime(gap)
+    }
+
+    @Test fun doubleTapClicksTheMiddleButton() {
+        val wheel = wheel()
+        val before = count()
+        wheel.performTouchInput { tap(120); tap(0) }
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals("pressiona e solta o botão do meio", before + 2, count())
+        assertEquals("Clique do meio: liberado.", state().event)
+        assertFalse(state().leftDown || state().rightDown)
+    }
+
+    @Test fun singleOrSlowTapsDoNotClick() {
+        val wheel = wheel()
+        val before = count()
+        wheel.performTouchInput { tap(1000); tap(1000) }
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals("toques espaçados não clicam", before, count())
+        // Dedo descansando na roda duas vezes seguidas também não.
+        wheel.performTouchInput { down(center); advanceEventTime(500); up(); advanceEventTime(100); down(center); advanceEventTime(500); up() }
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals(before, count())
+    }
+
+    @Test fun tapThatStopsInertiaIsNotHalfOfADoubleTap() {
+        val wheel = wheel()
+        wheel.performTouchInput { down(center); repeat(6) { moveBy(Offset(0f, 30f)) }; up() }
+        compose.mainClock.advanceTimeBy(200)
+        wheel.performTouchInput { tap(120); tap(0) }
+        compose.mainClock.advanceTimeBy(100)
+        assertNotEquals("Clique do meio: liberado.", state().event)
+    }
+
     @Test fun inertiaEndsByItself() {
         val wheel = wheel()
         wheel.performTouchInput { down(center); repeat(6) { moveBy(Offset(0f, 30f)) }; up() }

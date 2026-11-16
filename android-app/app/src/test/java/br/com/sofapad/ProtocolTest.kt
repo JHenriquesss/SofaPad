@@ -92,4 +92,15 @@ class ProtocolTest {
         assertFalse(simulator.state.rightDown)
         assertEquals(before + 2, simulator.state.eventCount)
     }
+
+    @Test fun middleClickPressesAndReleasesWithoutTouchingTheOtherButtons() {
+        val simulator = Simulator()
+        simulator.dispatch(Command.Button(MouseButton.LEFT, true))
+        val before = simulator.state.eventCount
+        simulator.middleClick()
+        assertEquals(before + 2, simulator.state.eventCount)
+        assertEquals("Clique do meio: liberado.", simulator.state.event)
+        assertTrue("arrasto em curso continua", simulator.state.leftDown)
+        assertEquals("middle", Protocol.encode(1, Command.Button(MouseButton.MIDDLE, true)).getValue("button").jsonPrimitive.content)
+    }
 }

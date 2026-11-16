@@ -60,6 +60,8 @@ private val WHEEL_NOTCH = 18.dp
 private val WHEEL_MIN_FLING = 160.dp
 private val WHEEL_MAX_FLING = 2600.dp
 private const val WHEEL_FRICTION = 3.2f
+/** Toque mais longo que isto é o dedo descansando na roda, não um toque. */
+private const val WHEEL_TAP_MS = 300L
 
 @Composable
 fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: (UiPreferences) -> Unit) {
@@ -187,7 +189,7 @@ private fun MouseButtonPad(simulator: Simulator, button: MouseButton, modifier: 
 /**
  * Rodinha entre os botões: deslizar o dedo gira a roda e rola a página no mesmo sentido de um
  * mouse (dedo para baixo, página desce). Soltar em movimento deixa a roda girando por inércia;
- * tocar de novo a segura.
+ * tocar de novo a segura. Dois toques rápidos são o clique do meio (apertar a roda de um mouse).
  */
 @Composable
 private fun ScrollWheel(simulator: Simulator, modifier: Modifier) {
@@ -195,7 +197,7 @@ private fun ScrollWheel(simulator: Simulator, modifier: Modifier) {
     var turn by remember { mutableFloatStateOf(0f) }
     Canvas(
         modifier.clip(RoundedCornerShape(50)).testTag("scroll_wheel")
-            .semantics { contentDescription = "Rodinha de rolagem. Deslize para cima ou para baixo para rolar a página." }
+            .semantics { contentDescription = "Rodinha de rolagem. Deslize para cima ou para baixo para rolar a página; dois toques fazem o clique do meio." }
             .pointerInput(simulator) {
                 val notch = WHEEL_NOTCH.toPx()
                 val minFling = WHEEL_MIN_FLING.toPx()
@@ -215,8 +217,12 @@ private fun ScrollWheel(simulator: Simulator, modifier: Modifier) {
                 coroutineScope {
                     val scope = this
                     var fling: Job? = null
+                    // Fim do último toque curto: outro toque logo em seguida é o clique do meio.
+                    var lastTapUp: Long? = null
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
+                        // Toque que segura a roda em inércia não conta como primeiro toque.
+                        val heldFling = fling?.isActive == true
                         fling?.cancel(); fling = null
                         down.consume()
                         val tracker = VelocityTracker()
@@ -224,6 +230,7 @@ private fun ScrollWheel(simulator: Simulator, modifier: Modifier) {
                         var travel = 0f
                         var rolling = false
                         var connected = true
+                        var lifted: Long? = null
                         do {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id }
@@ -234,9 +241,17 @@ private fun ScrollWheel(simulator: Simulator, modifier: Modifier) {
                                 // O trecho dentro da zona de toque é descartado: pousar o dedo não rola.
                                 if (rolling) connected = roll(dy) && connected
                                 else { travel += dy; rolling = abs(travel) > viewConfiguration.touchSlop }
-                            }
+                            } else if (change != null) lifted = change.uptimeMillis
                             event.changes.forEach { it.consume() }
                         } while (change != null && change.pressed)
+                        val up = lifted
+                        val tap = !rolling && !heldFling && up != null && up - down.uptimeMillis < WHEEL_TAP_MS
+                        val previous = lastTapUp
+                        lastTapUp = null
+                        if (tap && previous != null && down.uptimeMillis - previous <= viewConfiguration.doubleTapTimeoutMillis) {
+                            simulator.middleClick()
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        } else if (tap) lastTapUp = up
                         val speed = tracker.calculateVelocity().y.coerceIn(-maxFling, maxFling)
                         if (rolling && connected && abs(speed) > minFling) fling = scope.launch {
                             var velocity = speed
@@ -366,23 +381,39 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
     var draft by rememberSaveable { mutableStateOf("") }
     val requester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    val live = simulator.state.liveTyping
     val byteCount = draft.toByteArray(Charsets.UTF_8).size
-    val valid = byteCount <= Protocol.MAX_TEXT_BYTES
+    val valid = live || byteCount <= Protocol.MAX_TEXT_BYTES
     LaunchedEffect(Unit) { requester.requestFocus(); keyboard?.show() }
     DisposableEffect(Unit) { onDispose { keyboard?.hide() } }
 
     val editor: @Composable (Modifier) -> Unit = { fieldModifier ->
         OutlinedTextField(
-            value = draft, onValueChange = { draft = it }, readOnly = simulator.state.textPending,
+            // Em tempo real o campo mostra só o que o PC recebeu: edição recusada volta sozinha.
+            value = if (live) simulator.state.liveText else draft,
+            onValueChange = { if (live) simulator.liveEdit(it) else draft = it },
+            readOnly = simulator.state.textPending,
             modifier = fieldModifier.focusRequester(requester).testTag("text_entry"),
-            placeholder = { Text(if (simulator.state.remoteMode) "Digite para o PC…" else "Digite para o PC simulado…") },
-            label = if (!valid) { { Text("Máximo: 4 KiB", fontSize = 10.sp) } } else null,
+            placeholder = { Text(if (live) "Cada letra vai direto ao PC…" else if (simulator.state.remoteMode) "Digite para o PC…" else "Digite para o PC simulado…") },
+            // No modo compacto não há linha de aviso: a recusa do tempo real aparece no rótulo.
+            label = when {
+                !valid -> { { Text("Máximo: 4 KiB", fontSize = 10.sp) } }
+                live && simulator.state.liveWarning.isNotEmpty() -> { { Text("Edição não enviada", fontSize = 10.sp) } }
+                else -> null
+            },
             keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, autoCorrectEnabled = true),
-            isError = !valid,
+            isError = !valid || (live && simulator.state.liveWarning.isNotEmpty()),
         )
     }
     val shortcuts: @Composable (Modifier) -> Unit = { rowModifier ->
-        Row(rowModifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(rowModifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Ligar só com o campo vazio: o rascunho atual nunca foi ao PC e não pode virar base de Backspace.
+            FilterChip(
+                selected = live, onClick = { simulator.setLiveTyping(!live) },
+                enabled = !simulator.state.textPending && (live || draft.isEmpty()),
+                label = { Text("Tempo real", maxLines = 1) },
+                modifier = Modifier.testTag("live_typing").semantics { contentDescription = if (live) "Tempo real ligado" else "Tempo real desligado" },
+            )
             Shortcut.entries.forEach { shortcut ->
                 OutlinedButton(onClick = { simulator.dispatch(Command.Key(shortcut)) }, modifier = Modifier.testTag("shortcut_${shortcut.name}"), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label, maxLines = 1) }
             }
@@ -390,8 +421,8 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
     }
     val actions: @Composable (Modifier) -> Unit = { rowModifier ->
         Row(rowModifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            OutlinedButton(onClick = { draft = ""; keyboard?.hide(); simulator.show(Screen.CONTROL) }, enabled = !simulator.state.textPending, modifier = Modifier.weight(1f).testTag("cancel_text"), contentPadding = PaddingValues(6.dp)) { Text("Cancelar") }
-            Button(onClick = { if (simulator.sendText(draft)) { draft = ""; keyboard?.hide() } }, enabled = valid && draft.isNotEmpty() && !simulator.state.textPending && (!simulator.state.remoteMode || simulator.state.link == LinkState.READY), modifier = Modifier.weight(1f).testTag("send_text"), contentPadding = PaddingValues(6.dp)) { Text(if (simulator.state.textPending) "Enviando" else "Enviar") }
+            OutlinedButton(onClick = { draft = ""; keyboard?.hide(); simulator.show(Screen.CONTROL) }, enabled = !simulator.state.textPending, modifier = Modifier.weight(1f).testTag("cancel_text"), contentPadding = PaddingValues(6.dp)) { Text(if (live) "Fechar" else "Cancelar") }
+            Button(onClick = { if (simulator.sendText(draft)) { draft = ""; keyboard?.hide() } }, enabled = !live && valid && draft.isNotEmpty() && !simulator.state.textPending && (!simulator.state.remoteMode || simulator.state.link == LinkState.READY), modifier = Modifier.weight(1f).testTag("send_text"), contentPadding = PaddingValues(6.dp)) { Text(if (simulator.state.textPending) "Enviando" else if (live) "Ao vivo" else "Enviar") }
         }
     }
     BoxWithConstraints(modifier.fillMaxWidth()) {
@@ -407,7 +438,15 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
         } else {
             Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (simulator.state.deliveryWarning.isNotEmpty()) Text(simulator.state.deliveryWarning, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
-                Text(if (valid) "Texto composto aqui; Enviar não pressiona Enter." else "Texto excede 4 KiB. Reduza para enviar.", fontSize = 12.sp, color = if (valid) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                if (live && simulator.state.liveWarning.isNotEmpty()) Text(simulator.state.liveWarning, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                Text(
+                    when {
+                        live -> "Tempo real: cada letra vai direto à janela ativa do PC; Enter do teclado pressiona Enter."
+                        valid -> "Texto composto aqui; Enviar não pressiona Enter."
+                        else -> "Texto excede 4 KiB. Reduza para enviar."
+                    },
+                    fontSize = 12.sp, color = if (valid) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                )
                 editor(Modifier.weight(1f).fillMaxWidth())
                 shortcuts(Modifier.fillMaxWidth())
                 actions(Modifier.fillMaxWidth())

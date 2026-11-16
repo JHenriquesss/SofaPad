@@ -7,7 +7,7 @@
   {"v":1,"type":"mouse_move","seq":1,"dx":2049,"dy":0},
   {"v":1,"type":"mouse_move","seq":1,"dx":"8","dy":0},
   {"v":1,"type":"mouse_move","seq":1,"dx":0},
-  {"v":1,"type":"mouse_button","seq":1,"button":"middle","state":"down"},
+  {"v":1,"type":"mouse_button","seq":1,"button":"back","state":"down"},
   {"v":1,"type":"mouse_scroll","seq":1,"vertical":121},
   {"v":1,"type":"shortcut","seq":1,"name":"WIN_R"},
   {"v":1,"type":"text_insert","seq":1,"text":"teste","enter":true},

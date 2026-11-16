@@ -15,7 +15,7 @@ Todas as mensagens cliente → agente incluem `v: 1`, `type` e `seq` inteiro de 
 | Tipo | Campos adicionais | Limites |
 | --- | --- | --- |
 | `mouse_move` | `dx`, `dy` numéricos finitos | cada delta entre −2048 e 2048 |
-| `mouse_button` | `button`, `state` | `left`/`right`; `down`/`up` |
+| `mouse_button` | `button`, `state` | `left`/`right`/`middle`; `down`/`up` (`middle` desde a 0.3.7; agentes anteriores recusam) |
 | `mouse_scroll` | `vertical` numérico finito | −120 até 120; positivo para cima |
 | `text_insert` | `text` string | até 4096 bytes UTF-8; sem Enter adicional |
 | `shortcut` | `name` | `ALT_TAB`, `CTRL_C`, `CTRL_V`, `CTRL_A`, `ENTER`, `ESC`, `BACKSPACE` |

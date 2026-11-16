@@ -9,6 +9,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import org.junit.Assert.*
 import org.junit.Rule
@@ -38,6 +39,50 @@ class TypingTest {
         compose.onNodeWithTag("text_entry").performTextInput("Olá, ação! 😀")
         compose.onNodeWithTag("send_text").performClick()
         compose.runOnIdle { assertEquals("Olá, ação! 😀", simulator.state.sentText) }
+    }
+
+    @Test fun liveTypingMirrorsEachEditAndRefusesUnsafeDeletes() {
+        val simulator = Simulator()
+        simulator.show(Screen.TYPING)
+        compose.setContent { MaterialTheme { TypingScreen(simulator, Modifier.width(340.dp).height(340.dp)) } }
+        compose.onNodeWithTag("live_typing").performClick()
+        compose.onNodeWithTag("send_text").assertIsNotEnabled()
+        val field = compose.onNodeWithTag("text_entry")
+        field.performTextInput("Olá")
+        compose.runOnIdle {
+            assertEquals("Olá", simulator.state.liveText)
+            assertEquals("Digitando em tempo real (simulação).", simulator.state.event)
+        }
+        field.performTextInput(" 👍🏽")
+        val sent = compose.runOnIdle { simulator.state.eventCount }
+        field.performTextClearance()
+        compose.runOnIdle {
+            assertEquals("apagar emoji composto é recusado", sent, simulator.state.eventCount)
+            assertEquals("Olá 👍🏽", simulator.state.liveText)
+            assertEquals(LiveTyping.COMPLEX_DELETE, simulator.state.liveWarning)
+        }
+        field.assertTextContains("Olá 👍🏽")
+        // Quebra de linha com o cursor fora do fim é recusada; no fim, vira Enter.
+        field.performTextInputSelection(TextRange(0))
+        field.performTextInput("\n")
+        compose.runOnIdle { assertEquals(LiveTyping.MIDDLE_NEWLINE, simulator.state.liveWarning) }
+        field.performTextInputSelection(TextRange("Olá 👍🏽".length))
+        field.performTextInput("\n")
+        compose.runOnIdle {
+            assertEquals("Atalho no PC simulado: Enter", simulator.state.event)
+            assertEquals("", simulator.state.liveText)
+        }
+    }
+
+    @Test fun liveTypingCannotStartOverAnUnsentDraft() {
+        val simulator = Simulator()
+        simulator.show(Screen.TYPING)
+        compose.setContent { MaterialTheme { TypingScreen(simulator, Modifier.width(340.dp).height(340.dp)) } }
+        compose.onNodeWithTag("text_entry").performTextInput("rascunho")
+        compose.onNodeWithTag("live_typing").assertIsNotEnabled()
+        compose.onNodeWithTag("text_entry").performTextClearance()
+        compose.onNodeWithTag("live_typing").assertIsEnabled().performClick()
+        compose.runOnIdle { assertTrue(simulator.state.liveTyping) }
     }
 
     @Test fun compactTypingKeepsActionsAndScrollableShortcutsReachable() {
