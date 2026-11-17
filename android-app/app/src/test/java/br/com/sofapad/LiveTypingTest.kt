@@ -78,4 +78,37 @@ class LiveTypingTest {
         simulator.pause()
         assertEquals("", simulator.state.liveText)
     }
+
+    @Test fun backspaceOnEmptyFieldReachesTextThatWasAlreadyOnThePc() {
+        val simulator = Simulator()
+        assertFalse("sem tempo real, nada", simulator.liveBackspaceBeyond())
+        simulator.setLiveTyping(true)
+        simulator.liveEdit("ab")
+        assertFalse("com texto no campo, o Backspace segue o espelho", simulator.liveBackspaceBeyond())
+        simulator.liveEdit("")
+        val before = simulator.state.eventCount
+        assertTrue(simulator.liveBackspaceBeyond())
+        assertTrue(simulator.liveBackspaceBeyond())
+        assertEquals(before + 2, simulator.state.eventCount)
+        assertEquals("Atalho no PC simulado: ⌫", simulator.state.event)
+    }
+
+    @Test fun shortcutsKeepTheMirrorInStepWithThePc() {
+        val simulator = Simulator()
+        simulator.setLiveTyping(true)
+        simulator.liveEdit("oi 😀")
+        simulator.liveShortcut(Shortcut.BACKSPACE)
+        assertEquals("⌫ apaga o último caractere do espelho", "oi ", simulator.state.liveText)
+        simulator.liveShortcut(Shortcut.CTRL_C)
+        assertEquals("copiar não mexe no texto", "oi ", simulator.state.liveText)
+        simulator.liveShortcut(Shortcut.CTRL_A)
+        assertEquals("depois de Ctrl+A o PC está diferente: recomeça", "", simulator.state.liveText)
+        val before = simulator.state.eventCount
+        simulator.liveShortcut(Shortcut.BACKSPACE)
+        assertEquals("com o campo vazio, ⌫ vai direto ao PC", before + 1, simulator.state.eventCount)
+        simulator.liveEdit("fim")
+        simulator.liveShortcut(Shortcut.ENTER)
+        assertEquals("", simulator.state.liveText)
+        assertEquals("Atalho no PC simulado: Enter", simulator.state.event)
+    }
 }

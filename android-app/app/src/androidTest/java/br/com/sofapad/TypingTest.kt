@@ -74,6 +74,27 @@ class TypingTest {
         }
     }
 
+    @OptIn(ExperimentalTestApi::class)
+    @Test fun backspaceKeyOnEmptyLiveFieldDeletesOnThePc() {
+        val simulator = Simulator()
+        simulator.show(Screen.TYPING)
+        compose.setContent { MaterialTheme { TypingScreen(simulator, Modifier.width(340.dp).height(340.dp)) } }
+        compose.onNodeWithTag("live_typing").performClick()
+        val field = compose.onNodeWithTag("text_entry")
+        field.performTextInput("a")
+        val before = compose.runOnIdle { simulator.state.eventCount }
+        // Com texto, a tecla apaga no campo e o espelho manda um Backspace só.
+        field.performKeyInput { pressKey(androidx.compose.ui.input.key.Key.Backspace) }
+        compose.runOnIdle { assertEquals("", simulator.state.liveText); assertEquals(before + 1, simulator.state.eventCount) }
+        // Vazio: cada tecla vai direto ao PC, para apagar o que já estava lá.
+        field.performKeyInput { pressKey(androidx.compose.ui.input.key.Key.Backspace) }
+        field.performKeyInput { pressKey(androidx.compose.ui.input.key.Key.Backspace) }
+        compose.runOnIdle {
+            assertEquals(before + 3, simulator.state.eventCount)
+            assertEquals("Atalho no PC simulado: ⌫", simulator.state.event)
+        }
+    }
+
     @Test fun liveTypingCannotStartOverAnUnsentDraft() {
         val simulator = Simulator()
         simulator.show(Screen.TYPING)
