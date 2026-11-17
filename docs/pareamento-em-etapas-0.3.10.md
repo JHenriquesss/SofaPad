@@ -44,9 +44,15 @@ A janela de `Parear celular` mostra, nesta ordem: o código de conferência, o c
   - identidade anunciada diferente da apresentada é recusada;
   - o IP digitado sobrevive à rotação.
 - No emulador, contra o agente real (0.3.7) que roda neste PC: digitando o IP, o passo 2 mostrou `4DAF 8D9B D94E 17E5`, igual aos 16 primeiros caracteres do SHA-256 do certificado lido à parte com `openssl s_client`. A identidade completa também conferiu, e `É igual` levou ao passo 3. Isso também mostra que o app novo funciona com agente antigo.
+- Pareamento completo no emulador contra o agente 0.3.10 deste PC:
+  - abrir o 0.3.10 fechou o 0.3.7 e regravou o início automático;
+  - a janela `Parear celular` mostrou o código de conferência `4DAF 8D9B D94E 17E5`, igual ao do celular, e o código de uso único;
+  - com o código digitado e o nome confirmado no PC, o app mostrou `PC conectado · agente 0.3.10`;
+  - um deslize no touchpad moveu o cursor do Windows.
+  
+  O aparelho de teste foi revogado depois.
+- A confirmação do nome no PC precisa vir em até um minuto. Se vier depois, o celular mostra o aviso de tempo esgotado, e o agente descarta a aprovação atrasada sem autorizar o aparelho.
 
 ## Não verificado
 
 - O assistente num celular físico, com a lista de PCs achados pela rede (o emulador não recebe os anúncios mDNS).
-- A nova janela de pareamento na tela do PC.
-- O envio do código de uso único e a confirmação do nome no PC com o assistente novo (o envio usa o mesmo cliente de pareamento da 0.3.9, coberto pelos testes JVM).
