@@ -34,7 +34,14 @@ data class SimulationState(
     /** O que o PC recebeu nesta sessão de tempo real (o campo mostra exatamente isto). */
     val liveText: String = "",
     val liveWarning: String = "",
-)
+    /** Motivo da última falha da conexão; some depois de um tempo com a conexão estável. */
+    val linkProblem: String = "",
+    /** Versão do agente do PC nesta conexão; nula antes do primeiro contato, vazia se ele não informa. */
+    val agentVersion: String? = null,
+) {
+    /** O agente do PC é mais antigo do que este app precisa. */
+    val agentOutdated: Boolean get() = agentVersion != null && AgentVersion.outdated(agentVersion)
+}
 
 class Simulator : ViewModel() {
     var state by mutableStateOf(SimulationState())
@@ -42,6 +49,10 @@ class Simulator : ViewModel() {
     private var seq = 0L
     private var remote: RemoteConnection? = null
     private var connectionGeneration = 0L
+    /** Últimos problemas da conexão, com hora, para a pessoa relatar (Configurações). */
+    var problemLog by mutableStateOf(emptyList<String>())
+        private set
+    private var problemEpoch = 0L
     var pairedPc by mutableStateOf<ConnectionSettings?>(null)
         private set
     var credentialError by mutableStateOf("")
@@ -123,7 +134,7 @@ class Simulator : ViewModel() {
     fun discovered(devices: List<DiscoveredPc>) {
         latestDevices = devices
         val current = pairedPc ?: return
-        if (!foreground || !state.remoteMode || state.link == LinkState.REJECTED || state.textPending) return
+        if (!foreground || !state.remoteMode || state.link == LinkState.REJECTED || state.link == LinkState.BLOCKED || state.textPending) return
         val pc = devices.firstOrNull { it.fingerprint == current.fingerprint } ?: return
         if (pc.host == current.host && pc.port == current.port) return
         val updated = runCatching { current.at(pc.host, pc.port) }.getOrNull() ?: return
@@ -142,19 +153,28 @@ class Simulator : ViewModel() {
     fun connect(settings: ConnectionSettings, post: (() -> Unit) -> Unit) {
         val generation = ++connectionGeneration
         remote?.close()
-        state = state.copy(remoteMode = true, sentText = "", leftDown = false, rightDown = false, liveText = "", liveWarning = "")
+        state = state.copy(remoteMode = true, sentText = "", leftDown = false, rightDown = false, liveText = "", liveWarning = "", linkProblem = "", agentVersion = null)
         remote = RemoteConnection(
-            onState = { value -> post { if (generation == connectionGeneration) state = state.copy(
-                link = value, leftDown = false, rightDown = false,
-                textPending = value == LinkState.READY && state.textPending,
-                deliveryWarning = if (value != LinkState.READY && state.textPending) "Envio não confirmado. Confira o texto no PC antes de tentar novamente." else state.deliveryWarning,
-            ) } },
+            onState = { value -> post { if (generation == connectionGeneration) {
+                state = state.copy(
+                    link = value, leftDown = false, rightDown = false,
+                    textPending = value == LinkState.READY && state.textPending,
+                    deliveryWarning = if (value != LinkState.READY && state.textPending) "Envio não confirmado. Confira o texto no PC antes de tentar novamente." else state.deliveryWarning,
+                )
+                // O aviso fica enquanto a conexão oscila e some após um tempo estável.
+                val epoch = ++problemEpoch
+                if (value == LinkState.READY && state.linkProblem.isNotEmpty()) main.postDelayed({
+                    if (epoch == problemEpoch && state.link == LinkState.READY) state = state.copy(linkProblem = "")
+                }, PROBLEM_CLEAR_MS)
+            } } },
             onAck = { command -> if (command is Command.Text && !command.live) post {
                 if (generation == connectionGeneration) {
                     state = state.copy(textPending = false, deliveryWarning = "", event = "Texto inserido no PC, sem Enter.")
                     show(Screen.CONTROL)
                 }
             } },
+            onAgent = { version -> post { if (generation == connectionGeneration) reportAgent(version) } },
+            onProblem = { problem -> post { if (generation == connectionGeneration) reportLinkProblem(problem) } },
             onUncertainText = { post { if (generation == connectionGeneration) state =
                 if (state.textPending || !state.liveTyping) state.copy(textPending = false, deliveryWarning = "Envio não confirmado. Confira o texto no PC antes de tentar novamente.")
                 // Não se sabe o que chegou: recomeçar do zero em vez de apagar às cegas no PC.
@@ -175,7 +195,18 @@ class Simulator : ViewModel() {
         state = state.copy(liveText = "")
     }
     fun resume() { foreground = true; remote?.resume() }
-    fun reconnect() { remote?.reconnect() }
+    fun reconnect() { state = state.copy(linkProblem = ""); remote?.reconnect() }
+
+    internal fun reportAgent(version: String) {
+        state = state.copy(agentVersion = version)
+    }
+
+    internal fun reportLinkProblem(problem: LinkProblem) {
+        problemEpoch++
+        state = state.copy(linkProblem = problem.message)
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.ROOT).format(java.util.Date())
+        problemLog = (listOf("$time · ${problem.message}") + problemLog).take(MAX_PROBLEM_LOG)
+    }
     fun networkAvailable() { if (foreground) remote?.networkAvailable() }
 
     fun show(screen: Screen) {
@@ -319,6 +350,8 @@ class Simulator : ViewModel() {
     }
 
     private companion object {
+        const val PROBLEM_CLEAR_MS = 10_000L
+        const val MAX_PROBLEM_LOG = 20
         const val LIVE_UNCERTAIN = "A conexão falhou durante a digitação. Confira o texto no PC; o campo recomeçou vazio."
     }
 

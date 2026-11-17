@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Gerado por scripts/make-icon.py; não edite à mão. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="0.07368" android:scaleY="0.07368" android:translateX="16.274" android:translateY="13.326">
+        <path android:fillColor="#3C7FA8" android:pathData="M272,760h30a20,20 0 0 1 20,20v36a20,20 0 0 1 -20,20h-30a20,20 0 0 1 -20,-20v-36a20,20 0 0 1 20,-20z" />
+        <path android:fillColor="#3C7FA8" android:pathData="M722,760h30a20,20 0 0 1 20,20v36a20,20 0 0 1 -20,20h-30a20,20 0 0 1 -20,-20v-36a20,20 0 0 1 20,-20z" />
+        <path android:fillColor="#4FA9DB" android:pathData="M332,268h360a110,110 0 0 1 110,110v152a110,110 0 0 1 -110,110h-360a110,110 0 0 1 -110,-110v-152a110,110 0 0 1 110,-110z" />
+        <path android:fillColor="#8FD0F5" android:pathData="M342,520h340a60,60 0 0 1 60,60v140a60,60 0 0 1 -60,60h-340a60,60 0 0 1 -60,-60v-140a60,60 0 0 1 60,-60z" />
+        <path android:fillColor="#78C6F0" android:pathData="M222,420h10a90,90 0 0 1 90,90v180a90,90 0 0 1 -90,90h-10a90,90 0 0 1 -90,-90v-180a90,90 0 0 1 90,-90z" />
+        <path android:fillColor="#78C6F0" android:pathData="M792,420h10a90,90 0 0 1 90,90v180a90,90 0 0 1 -90,90h-10a90,90 0 0 1 -90,-90v-180a90,90 0 0 1 90,-90z" />
+    </group>
+</vector>

@@ -19,6 +19,7 @@ Funciona sem contas, nuvem ou transmissão de tela. O agente guarda a identidade
 - [Início automático com o Windows e rodinha de rolagem — 0.3.6](docs/inicio-automatico-rodinha-0.3.6.md).
 - [Clique do meio na rodinha e digitação em tempo real — 0.3.7](docs/clique-do-meio-e-tempo-real-0.3.7.md).
 - [Backspace no tempo real apaga texto que já estava no PC — APK 0.3.8](docs/backspace-tempo-real-0.3.8.md).
+- [Avisos de conexão, versão do agente e ícone — 0.3.9](docs/avisos-de-conexao-0.3.9.md).
 - [Segurança e validação da Etapa C](docs/validacao-etapa-c.md).
 - [Conectar celular e PC na Etapa B](docs/conexao-etapa-b.md).
 - [Testes manuais](docs/testes-manuais.md).

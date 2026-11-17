@@ -93,6 +93,36 @@ class LiveTypingTest {
         assertEquals("Atalho no PC simulado: ⌫", simulator.state.event)
     }
 
+    @Test fun oldOrSilentAgentIsFlaggedAsOutdated() {
+        assertTrue("agente sem versão é anterior à 0.3.9", AgentVersion.outdated(""))
+        assertTrue(AgentVersion.outdated("0.3.7"))
+        assertTrue(AgentVersion.outdated("0.2.99"))
+        assertFalse(AgentVersion.outdated("0.3.9"))
+        assertFalse(AgentVersion.outdated("0.3.10"))
+        assertFalse(AgentVersion.outdated("1.0.0"))
+        assertTrue("texto estranho não é versão", AgentVersion.outdated("0.3"))
+        val simulator = Simulator()
+        assertFalse("antes de conectar não há aviso", simulator.state.agentOutdated)
+        simulator.reportAgent("")
+        assertTrue(simulator.state.agentOutdated)
+        simulator.reportAgent("0.3.9")
+        assertFalse(simulator.state.agentOutdated)
+    }
+
+    @Test fun linkProblemsAreShownAndLoggedNewestFirst() {
+        val simulator = Simulator()
+        simulator.reportLinkProblem(LinkProblem.SLOW)
+        simulator.reportLinkProblem(LinkProblem.INPUT)
+        assertEquals(LinkProblem.INPUT.message, simulator.state.linkProblem)
+        assertEquals(2, simulator.problemLog.size)
+        assertTrue(simulator.problemLog.first().endsWith(LinkProblem.INPUT.message))
+        repeat(30) { simulator.reportLinkProblem(LinkProblem.RATE) }
+        assertEquals("o registro é limitado", 20, simulator.problemLog.size)
+        simulator.reconnect()
+        assertEquals("tentar de novo limpa o aviso, não o registro", "", simulator.state.linkProblem)
+        assertEquals(20, simulator.problemLog.size)
+    }
+
     @Test fun shortcutsKeepTheMirrorInStepWithThePc() {
         val simulator = Simulator()
         simulator.setLiveTyping(true)

@@ -3,6 +3,7 @@ package br.com.sofapad
 import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -93,11 +95,29 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 if (compactTyping) {
-                    Text(if (state.deliveryWarning.isNotEmpty()) "Envio incerto: confira o PC antes de reenviar." else if (state.remoteMode) "Digitar · ${state.link.label}" else "Digitar · simulação", fontSize = 10.sp)
+                    Text(if (state.deliveryWarning.isNotEmpty()) "Envio incerto: confira o PC antes de reenviar." else if (state.remoteMode && state.linkProblem.isNotEmpty()) state.linkProblem else if (state.remoteMode) "Digitar · ${state.link.label}" else "Digitar · simulação", fontSize = 10.sp, maxLines = 2)
                 } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("SofaPad", fontSize = 18.sp)
-                        Text(if (state.remoteMode) "● ${state.link.label}" else "● Simulação · sem conexão com o PC", color = Color(0xFF98DABB), fontSize = 12.sp)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Image(painterResource(R.drawable.ic_sofapad), contentDescription = null, modifier = Modifier.size(22.dp))
+                            Text("SofaPad", fontSize = 18.sp)
+                        }
+                        val agent = state.agentVersion
+                        Text(
+                            if (!state.remoteMode) "● Simulação · sem conexão com o PC"
+                            else if (state.link == LinkState.READY && !agent.isNullOrEmpty()) "● ${state.link.label} · agente $agent"
+                            else "● ${state.link.label}",
+                            Modifier.testTag("link_state"), color = Color(0xFF98DABB), fontSize = 12.sp,
+                        )
+                        if (state.remoteMode && state.agentOutdated) Text(
+                            "O SofaPad do PC é ${if (agent.isNullOrEmpty()) "antigo" else "a versão $agent"}; este app precisa da ${AgentVersion.REQUIRED} ou mais nova. Abra no PC o arquivo novo do agente.",
+                            Modifier.testTag("agent_outdated"), color = MaterialTheme.colorScheme.error, fontSize = 12.sp,
+                        )
+                        // O motivo da falha aparece aqui, onde a pessoa já olha o estado da conexão.
+                        if (state.remoteMode && state.linkProblem.isNotEmpty()) Text(state.linkProblem, Modifier.testTag("link_problem"), color = MaterialTheme.colorScheme.error, fontSize = 12.sp)
+                        if (state.remoteMode && (state.link == LinkState.BLOCKED || state.link == LinkState.REJECTED)) {
+                            TextButton(onClick = { simulator.reconnect() }, modifier = Modifier.testTag("retry_link"), contentPadding = PaddingValues(horizontal = 4.dp)) { Text("Tentar novamente") }
+                        }
                     }
                     IconButton(onClick = { simulator.show(if (state.screen == Screen.SETTINGS) Screen.CONTROL else Screen.SETTINGS) }, modifier = Modifier.testTag("settings")) {
                         Text("⚙", fontSize = 26.sp, modifier = Modifier.semantics { contentDescription = "Configurações" })

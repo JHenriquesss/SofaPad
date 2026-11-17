@@ -76,6 +76,38 @@ class PinnedTrust(private val fingerprint: String) : X509TrustManager {
 enum class LinkState(val label: String) {
     DISCONNECTED("Sem conexão com o PC"), CONNECTING("Conectando…"), READY("PC conectado"),
     RECONNECTING("Tentando reconectar…"), PAUSED("Conexão pausada"), REJECTED("Confira identidade e código no PC"),
+    /** Parado de propósito: o PC recusou comandos repetidamente ou não entendeu um deles. */
+    BLOCKED("Conexão interrompida"),
+}
+
+/** Versão do agente do PC, comparada com a mínima que este app precisa. */
+object AgentVersion {
+    /** Primeira versão do agente que entende tudo o que este app envia e informa a própria versão. */
+    const val REQUIRED = "0.3.9"
+
+    fun parse(text: String): List<Int>? {
+        val parts = text.split('.')
+        if (parts.size != 3 || text.length > 20) return null
+        return parts.map { it.toIntOrNull()?.takeIf { n -> n in 0..9999 } ?: return null }
+    }
+
+    /** Vazio (agente antigo, sem versão) ou menor que [REQUIRED]. */
+    fun outdated(text: String): Boolean {
+        val (current, required) = (parse(text) ?: return true) to parse(REQUIRED)!!
+        for (i in 0..2) if (current[i] != required[i]) return current[i] < required[i]
+        return false
+    }
+}
+
+/** Motivo de uma falha da conexão, para mostrar à pessoa em vez de reconectar em silêncio. */
+enum class LinkProblem(val message: String) {
+    INPUT("O PC recusou um comando. Causas comuns: antivírus bloqueando o SofaPad no PC, janela de administrador em primeiro plano ou tecla Ctrl, Shift, Alt ou Windows presa."),
+    RATE("Os comandos chegaram em rajada ao PC. Costuma ser Wi-Fi instável: aproxime-se do roteador."),
+    PROTOCOL("O SofaPad do PC não entendeu um comando. Atualize o agente do PC para a versão que acompanha este app."),
+    SLOW("O PC demorou a responder: Wi-Fi lento ou PC ocupado."),
+    BUSY("O PC está em uso por outro celular ou com um pareamento em andamento."),
+    UNAUTHORIZED("O PC não reconheceu este celular. Faça um novo pareamento em Configurações."),
+    UNREACHABLE("Não foi possível alcançar o PC. Confira se o SofaPad está aberto no PC e se os dois estão no mesmo Wi-Fi."),
 }
 
 class CommandBuffer {
@@ -99,6 +131,9 @@ class RemoteConnection(
     private val onState: (LinkState) -> Unit,
     private val onAck: (Command) -> Unit,
     private val onUncertainText: () -> Unit,
+    private val onProblem: (LinkProblem) -> Unit = {},
+    /** Versão informada pelo agente ao conectar; vazia em agentes anteriores à 0.3.9. */
+    private val onAgent: (String) -> Unit = {},
 ) : AutoCloseable {
     private val executor = Executors.newSingleThreadScheduledExecutor { runnable -> Thread(runnable, "sofapad-link").apply { isDaemon = true } }
     private val queue = CommandBuffer()
@@ -114,6 +149,8 @@ class RemoteConnection(
     private var openedAt = 0L
     private val pending = linkedMapOf<Long, Pair<Command, Long>>()
     private var pumpTask: java.util.concurrent.ScheduledFuture<*>? = null
+    // Instantes das últimas recusas do PC: várias seguidas param a reconexão automática.
+    private val refusals = ArrayDeque<Long>()
     // Envio imediato a cada toque (sem esperar um relógio fixo, que causava trancos
     // quando dessincronizado da taxa de quadros da tela) com teto abaixo do limite
     // de 240 comandos/s do PC. Movimentos que chegam durante o teto são somados.
@@ -167,7 +204,7 @@ class RemoteConnection(
 
     fun pause() = executor.execute { pauseInternal() }
     fun resume() = executor.execute { if (!active && settings != null && state != LinkState.REJECTED) { active = true; startPump(); open() } }
-    fun reconnect() = executor.execute { if (settings != null) { pauseInternal(); active = true; retries = 0; startPump(); open() } }
+    fun reconnect() = executor.execute { if (settings != null) { pauseInternal(); refusals.clear(); active = true; retries = 0; startPump(); open() } }
 
     private fun update(value: LinkState) { state = value; onState(value) }
     private fun discard() {
@@ -199,7 +236,15 @@ class RemoteConnection(
         val request = Request.Builder().url(config.url).header("Authorization", "Bearer ${config.token.lowercase()}").build()
         socket = http.newWebSocket(request, object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) { post { if (generation == current) runCatching { receive(text) }.onFailure { fail(true) } } }
-            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { post { if (generation == current) fail(t is SSLHandshakeException || t is javax.net.ssl.SSLPeerUnverifiedException || response?.code in listOf(401,403)) } }
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { post { if (generation == current) {
+                val identity = t is SSLHandshakeException || t is javax.net.ssl.SSLPeerUnverifiedException
+                when {
+                    response?.code in listOf(401, 403) -> onProblem(LinkProblem.UNAUTHORIZED)
+                    response?.code == 409 -> onProblem(LinkProblem.BUSY)
+                    response == null && !identity && retries >= 2 -> onProblem(LinkProblem.UNREACHABLE)
+                }
+                fail(identity || response?.code in listOf(401, 403))
+            } } }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { post { if (generation == current) fail(false) } }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
         })
@@ -212,6 +257,7 @@ class RemoteConnection(
         when (value["type"]?.jsonPrimitive?.content) {
             "hello" -> {
                 if (state !in listOf(LinkState.CONNECTING, LinkState.RECONNECTING) || value["mode"]?.jsonPrimitive?.content != "control" || value["authorized"]?.jsonPrimitive?.booleanOrNull != true) return fail(true)
+                onAgent(value["agent"]?.jsonPrimitive?.content?.takeIf { AgentVersion.parse(it) != null }.orEmpty())
                 retries = 0; lastSend = System.nanoTime(); update(LinkState.READY)
             }
             "ack", "pong" -> {
@@ -220,9 +266,21 @@ class RemoteConnection(
                 onAck(command)
                 drain()
             }
-            "error" -> fail(value["code"]?.jsonPrimitive?.content !in RECOVERABLE_ERRORS)
+            "error" -> refused(value["code"]?.jsonPrimitive?.content)
             else -> fail(true)
         }
+    }
+
+    /** O PC respondeu com erro: avisa o motivo e decide entre tentar de novo e parar. */
+    private fun refused(code: String?) {
+        if (code !in RECOVERABLE_ERRORS) { onProblem(LinkProblem.PROTOCOL); fail(true, LinkState.BLOCKED); return }
+        // SESSION_CLOSED só ecoa a recusa anterior: mantém o motivo já mostrado.
+        if (code == "INPUT_ERROR") onProblem(LinkProblem.INPUT) else if (code == "RATE_LIMIT") onProblem(LinkProblem.RATE)
+        val now = System.nanoTime()
+        refusals.addLast(now)
+        while (refusals.isNotEmpty() && (now - refusals.first()) / 1_000_000 > REFUSAL_WINDOW_MS) refusals.removeFirst()
+        // Reconectar sem parar deixaria o cursor aos saltos sem a pessoa saber por quê.
+        if (refusals.size >= MAX_REFUSALS) { refusals.clear(); fail(true, LinkState.BLOCKED) } else fail(false)
     }
 
     private fun write(command: Command): Boolean {
@@ -239,15 +297,15 @@ class RemoteConnection(
         }
         if (state != LinkState.READY) return
         // Com Wi-Fi lento, segura o envio (movimentos se somam na fila) em vez de derrubar a conexão.
-        if (pending.values.any { (System.nanoTime() - it.second) / 1_000_000 > 2500 }) { fail(false); return }
+        if (pending.values.any { (System.nanoTime() - it.second) / 1_000_000 > 2500 }) { onProblem(LinkProblem.SLOW); fail(false); return }
         drain()
         if (state == LinkState.READY && pending.size < MAX_IN_FLIGHT && (System.nanoTime() - lastSend) / 1_000_000 >= 1000) write(Command.Ping)
     }
-    private fun fail(permanent: Boolean) {
+    private fun fail(permanent: Boolean, stopped: LinkState = LinkState.REJECTED) {
         generation++
         socket?.cancel(); socket = null
         discard()
-        if (permanent) { active = false; pumpTask?.cancel(false); pumpTask = null; update(LinkState.REJECTED); return }
+        if (permanent) { active = false; pumpTask?.cancel(false); pumpTask = null; update(stopped); return }
         if (!active) return
         update(LinkState.RECONNECTING)
         // Primeira tentativa quase imediata (queda breve de Wi-Fi), depois espaça até 8 s.
@@ -264,6 +322,8 @@ class RemoteConnection(
         const val MAX_IN_FLIGHT = 32
         val RETRY_DELAYS_MS = longArrayOf(250, 1000, 2000, 4000, 8000)
         val RECOVERABLE_ERRORS = setOf("INPUT_ERROR", "RATE_LIMIT", "SESSION_CLOSED")
+        const val MAX_REFUSALS = 3
+        const val REFUSAL_WINDOW_MS = 20_000L
     }
 
     override fun close() {

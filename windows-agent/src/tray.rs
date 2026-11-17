@@ -23,10 +23,34 @@ fn icon(window: HWND, action: u32) -> bool {
     data.uID = 1;
     data.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
     data.uCallbackMessage = TRAY;
-    data.hIcon = unsafe { LoadIconW(ptr::null_mut(), IDI_APPLICATION) };
-    let tip = wide("SofaPad — controle pelo celular");
+    data.hIcon = app_icon();
+    let tip = wide(&format!("SofaPad {VERSION} — controle pelo celular"));
     data.szTip[..tip.len()].copy_from_slice(&tip);
     unsafe { Shell_NotifyIconW(action, &data) != 0 }
+}
+/// Ícone do sofá embutido no executável, no tamanho da bandeja; sem ele, o genérico do Windows.
+fn app_icon() -> HICON {
+    unsafe {
+        let size = GetSystemMetrics(SM_CXSMICON);
+        let icon = LoadImageW(
+            GetModuleHandleW(ptr::null()),
+            ICON_ID as usize as *const u16,
+            IMAGE_ICON,
+            size,
+            size,
+            LR_SHARED,
+        );
+        if icon.is_null() {
+            LoadIconW(ptr::null_mut(), IDI_APPLICATION)
+        } else {
+            icon
+        }
+    }
+}
+/// Pede para a instância já aberta (de qualquer versão) encerrar, como se escolhessem Sair.
+pub fn close_running_instance() -> bool {
+    let window = unsafe { FindWindowW(wide("SofaPadTray").as_ptr(), ptr::null()) };
+    !window.is_null() && unsafe { PostMessageW(window, WM_CLOSE, 0, 0) } != 0
 }
 unsafe extern "system" fn procedure(
     window: HWND,
@@ -130,13 +154,12 @@ unsafe extern "system" fn procedure(
                     let status = runtime.status.lock().map(|s| s.clone()).unwrap_or_default();
                     dialog(
                         &format!(
-                            "{status}\n\nAparelhos autorizados: {}\nInício após login: {}\n\nUse apenas em rede doméstica confiável. Se solicitado, permita o firewall somente em redes privadas.",
+                            "SofaPad {VERSION}\n{status}\n\nAparelhos autorizados: {}\nInício após login: {}\nArquivo em uso: {}\n\nUse apenas em rede doméstica confiável. Se solicitado, permita o firewall somente em redes privadas.",
                             devices.len(),
-                            if startup_enabled() {
-                                "ativado"
-                            } else {
-                                "desativado"
-                            }
+                            startup_summary(),
+                            std::env::current_exe()
+                                .map(|path| path.display().to_string())
+                                .unwrap_or_else(|_| "desconhecido".into()),
                         ),
                         MB_OK,
                     );

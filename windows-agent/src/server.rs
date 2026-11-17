@@ -195,7 +195,7 @@ fn serve_io<S: io::Read + io::Write, C: InputController>(
     } else {
         "simulation"
     };
-    let hello = json!({"v":1,"type":"hello","mode":mode,"authorized":access.is_some(),"max_text_bytes":4096,"idle_timeout_ms":3000});
+    let hello = json!({"v":1,"type":"hello","mode":mode,"authorized":access.is_some(),"max_text_bytes":4096,"idle_timeout_ms":3000,"agent":env!("CARGO_PKG_VERSION")});
     if socket.send(Message::text(hello.to_string())).is_err() {
         return;
     }
