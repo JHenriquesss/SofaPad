@@ -290,6 +290,34 @@ class Simulator : ViewModel() {
         return true
     }
 
+    /**
+     * Backspace com o campo vazio: apaga no PC o que já estava lá antes (ou o que o PC
+     * completou sozinho). Com texto no campo, o Backspace segue o espelho normal.
+     */
+    fun liveBackspaceBeyond(): Boolean {
+        if (!state.liveTyping || state.textPending || state.liveText.isNotEmpty()) return false
+        if (state.remoteMode && state.link != LinkState.READY) {
+            state = state.copy(liveWarning = "Sem conexão com o PC: nada foi enviado.")
+            return true
+        }
+        if (dispatch(Command.Key(Shortcut.BACKSPACE))) state = state.copy(liveWarning = "")
+        return true
+    }
+
+    /** Atalhos com o tempo real ligado, sem deixar o espelho diferente do PC. */
+    fun liveShortcut(shortcut: Shortcut) {
+        val text = state.liveText
+        when (shortcut) {
+            Shortcut.BACKSPACE ->
+                if (text.isEmpty()) liveBackspaceBeyond()
+                else liveEdit(text.substring(0, text.offsetByCodePoints(text.length, -1)))
+            // Copiar não muda o texto do PC.
+            Shortcut.CTRL_C -> dispatch(Command.Key(shortcut))
+            // Os demais mudam o texto ou o foco no PC: o que vier depois recomeça do zero.
+            else -> if (dispatch(Command.Key(shortcut))) state = state.copy(liveText = "", liveWarning = "")
+        }
+    }
+
     private companion object {
         const val LIVE_UNCERTAIN = "A conexão falhou durante a digitação. Confira o texto no PC; o campo recomeçou vazio."
     }

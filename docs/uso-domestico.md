@@ -1,6 +1,6 @@
 # Como usar o SofaPad
 
-Agente Windows 0.3.7 e APK Android 0.3.7 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.7 e APK Android 0.3.8 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
@@ -40,7 +40,7 @@ Entre os botões `Clique esquerdo` e `Clique direito` há uma **rodinha**, como 
 
 Também dá para segurar o botão esquerdo da tela e mover outro dedo no touchpad para arrastar. `Digitar` abre o teclado do celular: revise o texto e toque em `Enviar`. Não é enviado Enter automaticamente. Os atalhos agem no PC.
 
-Para ver o texto aparecer no PC enquanto digita, toque em **`Tempo real`** (no começo da fileira de atalhos, com o campo vazio). Cada letra vai direto para a janela ativa do PC, e o Enter do teclado do celular pressiona Enter. Antes de digitar, confira se o cursor do PC está no campo certo: se outra janela pegar o foco, as letras vão para ela. Para proteger o texto do PC, algumas edições são recusadas (o campo volta ao que o PC tem e aparece um aviso): apagar mais de 32 letras de uma vez, apagar emoji composto (como 👍🏽 ou bandeiras) e quebrar linha no meio do texto. Nesses casos, apague no próprio PC. Se a conexão cair ou o app for para segundo plano, o campo recomeça vazio; confira no PC o que chegou. `Tempo real` vem desligado e fica como você deixou enquanto o app estiver aberto.
+Para ver o texto aparecer no PC enquanto digita, toque em **`Tempo real`** (no começo da fileira de atalhos, com o campo vazio). Cada letra vai direto para a janela ativa do PC, e o Enter do teclado do celular pressiona Enter. Antes de digitar, confira se o cursor do PC está no campo certo: se outra janela pegar o foco, as letras vão para ela. Para proteger o texto do PC, algumas edições são recusadas (o campo volta ao que o PC tem e aparece um aviso): apagar mais de 32 letras de uma vez, apagar emoji composto (como 👍🏽 ou bandeiras) e quebrar linha no meio do texto. Nesses casos, apague no próprio PC. **Com o campo vazio, o Backspace do teclado (ou o `⌫` dos atalhos) apaga direto no PC**: use-o para apagar o que já estava escrito lá ou o que o navegador completou sozinho. Às vezes o primeiro toque logo depois de esvaziar o campo não chega; toque de novo. Depois de `Ctrl+A`, `Ctrl+V`, `Esc`, `Alt+Tab` ou `Enter`, o campo recomeça vazio, porque o texto do PC mudou. Se a conexão cair ou o app for para segundo plano, o campo recomeça vazio; confira no PC o que chegou. `Tempo real` vem desligado e fica como você deixou enquanto o app estiver aberto.
 
 ## Bloquear um celular ou trocar de PC
 

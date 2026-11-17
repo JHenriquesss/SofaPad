@@ -25,6 +25,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
@@ -393,7 +398,10 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
             value = if (live) simulator.state.liveText else draft,
             onValueChange = { if (live) simulator.liveEdit(it) else draft = it },
             readOnly = simulator.state.textPending,
-            modifier = fieldModifier.focusRequester(requester).testTag("text_entry"),
+            // Backspace com o campo vazio chega como tecla (o teclado não tem o que apagar aqui): vai ao PC.
+            modifier = fieldModifier.focusRequester(requester).testTag("text_entry").onPreviewKeyEvent { event ->
+                live && event.type == KeyEventType.KeyDown && event.key == Key.Backspace && simulator.liveBackspaceBeyond()
+            },
             placeholder = { Text(if (live) "Cada letra vai direto ao PC…" else if (simulator.state.remoteMode) "Digite para o PC…" else "Digite para o PC simulado…") },
             // No modo compacto não há linha de aviso: a recusa do tempo real aparece no rótulo.
             label = when {
@@ -415,7 +423,7 @@ internal fun TypingScreen(simulator: Simulator, modifier: Modifier = Modifier) {
                 modifier = Modifier.testTag("live_typing").semantics { contentDescription = if (live) "Tempo real ligado" else "Tempo real desligado" },
             )
             Shortcut.entries.forEach { shortcut ->
-                OutlinedButton(onClick = { simulator.dispatch(Command.Key(shortcut)) }, modifier = Modifier.testTag("shortcut_${shortcut.name}"), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label, maxLines = 1) }
+                OutlinedButton(onClick = { if (live) simulator.liveShortcut(shortcut) else simulator.dispatch(Command.Key(shortcut)) }, modifier = Modifier.testTag("shortcut_${shortcut.name}"), contentPadding = PaddingValues(horizontal = 10.dp)) { Text(shortcut.label, maxLines = 1) }
             }
         }
     }
