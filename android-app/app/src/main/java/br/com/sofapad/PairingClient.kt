@@ -19,7 +19,7 @@ enum class PairingFailure(val message: String) {
     SETUP("Não foi possível preparar a conexão segura neste Android (P01). Informe esse diagnóstico para verificarmos a compatibilidade do aparelho."),
     NETWORK("Não foi possível acessar o PC. Confira o IP em Status no agente, a mesma rede Wi-Fi e a permissão do SofaPad no firewall da rede privada."),
     CONNECTION_TIMEOUT("O PC não concluiu a conexão segura. Feche o SofaPad no outro celular, gere um novo código em Parear celular no PC e tente novamente. Se persistir, confira o IP e a rede Wi-Fi."),
-    IDENTITY("A verificação segura da identidade do PC falhou. Confira os 64 caracteres na janela do PC e a data/hora dos aparelhos."),
+    IDENTITY("A verificação segura da identidade do PC falhou. Recomece o pareamento, confira o código de conferência com o da janela do PC e veja a data/hora dos aparelhos."),
     CODE("O PC recusou o código: ele pode estar incorreto, vencido ou já usado. Gere outro em Parear celular. Após várias tentativas, aguarde um minuto."),
     PC_CLOSED("O PC encerrou o pareamento sem enviar a autorização. Gere outro código e confirme Sim no Windows. Se já confirmou, o agente pode não ter conseguido salvar a autorização."),
     CONFIRMATION_TIMEOUT("O tempo para autorizar terminou. Gere outro código e confirme a janela no Windows em até um minuto; ela pode estar atrás da janela que mostra o código."),

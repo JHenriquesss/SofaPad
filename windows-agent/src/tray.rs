@@ -171,7 +171,8 @@ unsafe extern "system" fn procedure(
                         if let Ok(identity) = runtime.vault.identity() {
                             dialog(
                                 &format!(
-                                    "{status}\n\nNo celular, abra Configurações > Parear PC. Confira esta identidade completa (SHA-256):\n{}\n\nCódigo de uso único (5 minutos):\n{code}\n\nDepois, confirme o nome do celular neste PC. Fechar esta janela mantém o código válido; use Cancelar pareamento na bandeja para anulá-lo.",
+                                    "No celular, abra Configurações > Parear PC e siga os passos.\n\n1. Código de conferência (o celular deve mostrar o mesmo):\n      {}\n\n2. Código de uso único (vale 5 minutos):\n      {code}\n\n3. Depois, confirme o nome do celular na janela que abrir neste PC.\n\n{status}\nFechar esta janela mantém o código válido; use Cancelar pareamento no menu para anulá-lo.\n\nIdentidade completa (SHA-256), só para conferência detalhada:\n{}",
+                                    check_code(&identity.fingerprint),
                                     identity.fingerprint
                                 ),
                                 MB_OK,

@@ -73,14 +73,13 @@ class LayoutTest {
         compose.runOnIdle { assertFalse(simulator.state.leftDown) }
     }
 
-    @Test fun connectionPanelPreservesTypedFieldsAcrossRotation() {
+    @Test fun pairingWizardPreservesTypedAddressAcrossRotation() {
         val restoration = StateRestorationTester(compose)
         val simulator = Simulator()
-        restoration.setContent { MaterialTheme { androidx.compose.foundation.layout.Column { ConnectionPanel(simulator) } } }
-        compose.onNodeWithText("IP do PC").performTextInput("192.168.1.50")
-        compose.onNodeWithText("Código de 8 caracteres do PC").performTextInput("a1b2c3d4")
+        restoration.setContent { MaterialTheme { PairingWizard(simulator) } }
+        compose.onNodeWithTag("manual_address").performClick()
+        compose.onNodeWithTag("pc_host").performTextInput("192.168.1.50")
         restoration.emulateSavedInstanceStateRestore()
         compose.onNodeWithText("192.168.1.50").assertExists()
-        compose.onNodeWithText("a1b2c3d4").assertExists()
     }
 }

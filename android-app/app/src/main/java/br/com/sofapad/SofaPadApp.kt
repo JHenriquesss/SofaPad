@@ -88,7 +88,7 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
             lifecycle.lifecycle.addObserver(observer)
             onDispose { lifecycle.lifecycle.removeObserver(observer); simulator.releaseAll() }
         }
-        BackHandler(enabled = state.screen != Screen.CONTROL) { simulator.show(Screen.CONTROL) }
+        BackHandler(enabled = state.screen != Screen.CONTROL) { simulator.show(if (state.screen == Screen.PAIRING) Screen.SETTINGS else Screen.CONTROL) }
         Surface(color = Background) {
             Column(
                 Modifier.fillMaxSize().background(Background).safeDrawingPadding().imePadding().padding(if (compactTyping) 4.dp else 10.dp),
@@ -126,6 +126,7 @@ fun SofaPadApp(simulator: Simulator, preferences: UiPreferences, onPreferences: 
                 when (state.screen) {
                     Screen.CONTROL -> ControlScreen(simulator, preferences, Modifier.weight(1f))
                     Screen.TYPING -> TypingScreen(simulator, Modifier.weight(1f))
+                    Screen.PAIRING -> PairingWizard(simulator, Modifier.weight(1f))
                     Screen.SETTINGS -> SettingsScreen(simulator, preferences, onPreferences, { simulator.show(Screen.CONTROL) }, Modifier.weight(1f))
                 }
             }

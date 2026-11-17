@@ -1,10 +1,10 @@
 # Como usar o SofaPad
 
-Agente Windows 0.3.9 e APK Android 0.3.9 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.10 e APK Android 0.3.10 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.9.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+1. Coloque `SofaPad-agent-0.3.10.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
 2. Abra o programa. O ícone do SofaPad (um sofá azul) aparece perto do relógio; pode estar dentro da seta de ícones ocultos. Passe o mouse sobre ele para ver a versão. O build release não abre console.
    - **Para atualizar, basta abrir o arquivo novo:** ele fecha o SofaPad que estava aberto, assume o lugar e passa a iniciar com o Windows. Não é preciso escolher `Sair` antes.
    - `Status` mostra a versão, o arquivo em uso e se o início automático aponta para ele.
@@ -14,11 +14,14 @@ Agente Windows 0.3.9 e APK Android 0.3.9 de desenvolvimento: o fluxo está imple
 ## Autorizar o celular uma vez
 
 1. Instale o APK de desenvolvimento no Android 10 ou superior. Se necessário, permita a instalação apenas pelo aplicativo usado para abrir esse APK. Não desative o Play Protect.
-2. No SofaPad, toque na engrenagem e vá a `Parear PC`.
-3. Toque em `Buscar PCs na rede` e escolha o seu PC. Se não aparecer, digite o IP e a porta mostrados na janela do PC.
-4. Confira **todos os 64 caracteres** da identidade com a janela no próprio PC e marque a confirmação. A identidade sugerida pela descoberta precisa ser conferida. Se não coincidir, não continue. Também pode digitá-la manualmente.
-5. Digite o código de 8 caracteres da janela do PC, dê um nome ao celular e toque em `Parear e salvar autorização`. O código fica visível para revisão e é apagado do campo após o sucesso.
-6. No Windows, confirme o nome desse celular em até um minuto. Só confirme se você iniciou esse pedido. O código vale cinco minutos e pode ser usado uma única vez; se falhar, escolha `Parear celular` novamente.
+2. No PC, clique no sofá do SofaPad perto do relógio e escolha `Parear celular`. Deixe a janela aberta.
+3. No celular, toque na engrenagem e em `Parear PC`. O pareamento tem três passos, um por tela:
+   1. **Achar o PC.** Toque no seu PC na lista. Se ele não aparecer, toque em `Não encontrou? Digitar o endereço` e digite o IP mostrado em `Status` no PC.
+   2. **Conferir.** O celular mostra um código de conferência de 16 caracteres em quatro grupos, como `AB12 CD34 EF56 7890`. Compare com o da janela do PC. Se for igual, toque em `É igual`. Se for diferente, toque em `É diferente` e não continue: o celular pode estar falando com outro aparelho.
+   3. **Código.** Digite o código de uso único de 8 caracteres da janela do PC, dê um nome ao celular e toque em `Parear`.
+4. No Windows, confirme o nome desse celular em até um minuto. Só confirme se você iniciou esse pedido. O código vale cinco minutos e pode ser usado uma única vez; se falhar, escolha `Parear celular` novamente.
+
+O código de conferência são os 16 primeiros caracteres da identidade do PC. A identidade completa de 64 caracteres continua disponível em `Ver identidade completa` no celular e no fim da janela do PC. Ela não é segredo; o segredo é o código de uso único.
 
 Fechar a janela que mostra o código mantém o pareamento disponível até a expiração. `Cancelar pareamento` no menu da bandeja anula o código e pedidos ainda não confirmados.
 
@@ -26,7 +29,7 @@ Ao abrir `Parear celular`, o agente reserva a conexão para o novo pareamento at
 
 ## Usar depois
 
-Abra o SofaPad no celular. A autorização é recuperada e o app tenta reconectar ao PC. A descoberta pode atualizar o endereço se o roteador mudar o IP. Se o app foi colocado em simulação nesta sessão, use `Conectar ao PC salvo` nas configurações.
+Abra o SofaPad no celular. A autorização é recuperada e o app tenta reconectar ao PC. A descoberta pode atualizar o endereço se o roteador mudar o IP. Se o app foi colocado em simulação nesta sessão, use `Conectar ao PC` nas configurações.
 
 O PC precisa estar ligado e com o usuário já conectado ao Windows. Desde a versão 0.3.6, o agente passa a iniciar sozinho depois do login assim que é aberto uma vez: não é preciso abri-lo todo dia. A opção `Iniciar com o Windows` da bandeja aparece marcada; clique nela para desmarcar se preferir abrir manualmente (a escolha é lembrada). Vale só para esse usuário e não pede administrador. Ao trocar de versão ou mover o executável, abra o novo uma vez: o início automático passa a apontar para ele. Se o agente não aparecer depois de reiniciar, confira em `Configurações do Windows > Aplicativos > Inicialização` se o SofaPad não foi desligado ali.
 
