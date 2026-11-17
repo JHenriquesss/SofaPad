@@ -47,6 +47,20 @@ class PairingTest {
             assertEquals("Bearer 1234abcd", request.getHeader("Authorization"))
         } finally { server.close() }
     }
+    @Test fun probeReadsThePresentedIdentityWithoutSendingAnything() {
+        val (server, config) = server()
+        try {
+            assertEquals(config.fingerprint, IdentityProbe.fetch("127.0.0.1", server.port))
+            assertEquals("o aperto de mão TLS basta: nenhum pedido chega ao PC", 0, server.requestCount)
+            assertEquals(config.fingerprint.take(16).uppercase().chunked(4).joinToString(" "), IdentityProbe.checkCode(config.fingerprint))
+            assertEquals("AB12 CD34 EF56 7890", IdentityProbe.checkCode("ab12cd34ef567890" + "0".repeat(48)))
+        } finally { server.close() }
+    }
+    @Test fun probeRefusesPublicAddressesAndReportsClosedPorts() {
+        assertThrows(IllegalArgumentException::class.java) { IdentityProbe.fetch("8.8.8.8", 443) }
+        val port = java.net.ServerSocket(0).use { it.localPort }
+        assertThrows(java.io.IOException::class.java) { IdentityProbe.fetch("127.0.0.1", port, 1_000) }
+    }
     @Test fun rejectsWrongHostnameEvenWhenFingerprintMatches() {
         val (server, config) = server("another.local")
         server.enqueue(MockResponse().setResponseCode(403))

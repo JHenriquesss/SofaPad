@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-enum class Screen { CONTROL, TYPING, SETTINGS }
+enum class Screen { CONTROL, TYPING, SETTINGS, PAIRING }
 
 data class SimulationState(
     val screen: Screen = Screen.CONTROL,
@@ -68,7 +68,19 @@ class Simulator : ViewModel() {
     private var credentialStore: CredentialStore? = null
     private val credentialMutex = Mutex()
     private var foreground = false
-    private var latestDevices = emptyList<DiscoveredPc>()
+    /** PCs anunciados na rede agora (mDNS), mostrados no assistente de pareamento. */
+    var discoveredPcs by mutableStateOf(emptyList<DiscoveredPc>())
+        private set
+    /** PC cuja identidade já foi lida e aguarda a conferência da pessoa. */
+    var probedPc by mutableStateOf<DiscoveredPc?>(null)
+        private set
+    var probeBusy by mutableStateOf(false)
+        private set
+    var probeError by mutableStateOf("")
+        private set
+    private var probeGeneration = 0L
+    /** Leitura da identidade do PC; trocada nos testes de interface. */
+    internal var probe: (String, Int) -> String = { host, port -> IdentityProbe.fetch(host, port) }
     private val main by lazy { Handler(Looper.getMainLooper()) }
     private fun post(action: () -> Unit) { main.post { action() } }
 
@@ -80,7 +92,7 @@ class Simulator : ViewModel() {
             val restored = credentialMutex.withLock { withContext(Dispatchers.IO) { runCatching { credentialStore!!.read() } } }
             restored.onSuccess { config ->
                 pairedPc = config
-                if (config != null) { connect(config, ::post); if (!foreground) pause() else discovered(latestDevices) }
+                if (config != null) { connect(config, ::post); if (!foreground) pause() else discovered(discoveredPcs) }
             }.onFailure { credentialError = "Não foi possível abrir a autorização salva. Esqueça este PC e faça um novo pareamento." }
         }
     }
@@ -106,6 +118,7 @@ class Simulator : ViewModel() {
                 val pairedConfig = withContext(Dispatchers.IO) { client.pair(config, code, name) }
                 if (activePairing === client) pairingStage = PairingStage.SAVING
                 savePair(pairedConfig)
+                probedPc = null
                 if (!foreground) pause()
                 show(Screen.CONTROL)
             } catch (error: Exception) {
@@ -118,6 +131,38 @@ class Simulator : ViewModel() {
             }
         }
     }
+    /** Abre o assistente de pareamento do começo (ou volta a um pareamento em andamento). */
+    fun beginPairing() {
+        if (!pairingBusy) { probeGeneration++; probedPc = null; probeBusy = false; probeError = ""; pairingError = "" }
+        show(Screen.PAIRING)
+    }
+
+    /** Lê a identidade que o PC apresenta neste endereço; [announced] é a divulgada na rede, se houver. */
+    fun probePc(host: String, port: Int, announced: String = "") {
+        if (probeBusy || pairingBusy) return
+        if (runCatching { ConnectionSettings(host, port, "0".repeat(64), "0".repeat(64)) }.isFailure) {
+            probeError = "Digite o IP do PC como aparece em Status, por exemplo 192.168.0.10."
+            return
+        }
+        val generation = ++probeGeneration
+        probeBusy = true; probeError = ""; pairingError = ""
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { probe(host, port) } }
+            if (generation != probeGeneration) return@launch
+            probeBusy = false
+            val fingerprint = result.getOrNull()?.lowercase()?.takeIf { it.matches(Regex("[a-f0-9]{64}")) }
+            when {
+                fingerprint == null -> probeError = "Não foi possível falar com o SofaPad do PC neste endereço. Confira se ele está aberto, se os dois estão no mesmo Wi-Fi e se o firewall permite o SofaPad na rede privada."
+                // A rede anunciou uma identidade e o endereço apresentou outra: alguém no meio do caminho.
+                announced.isNotEmpty() && announced.lowercase() != fingerprint -> probeError = PROBE_MISMATCH
+                else -> probedPc = DiscoveredPc(discoveredPcs.firstOrNull { it.host == host && it.port == port }?.name ?: "PC", host, port, fingerprint)
+            }
+        }
+    }
+
+    /** A pessoa disse que o código de conferência não é o do PC: nada é enviado. */
+    fun rejectProbe() { probedPc = null; probeError = PROBE_MISMATCH }
+
     fun cancelPairing() {
         activePairing?.close()
     }
@@ -132,7 +177,7 @@ class Simulator : ViewModel() {
         paired(config)
     }
     fun discovered(devices: List<DiscoveredPc>) {
-        latestDevices = devices
+        discoveredPcs = devices
         val current = pairedPc ?: return
         if (!foreground || !state.remoteMode || state.link == LinkState.REJECTED || state.link == LinkState.BLOCKED || state.textPending) return
         val pc = devices.firstOrNull { it.fingerprint == current.fingerprint } ?: return
@@ -350,6 +395,7 @@ class Simulator : ViewModel() {
     }
 
     private companion object {
+        const val PROBE_MISMATCH = "O código de conferência não é o do seu PC. Não continue: confira o endereço em Status no PC e tente de novo. Se repetir, outro aparelho da rede pode estar se passando pelo PC."
         const val PROBLEM_CLEAR_MS = 10_000L
         const val MAX_PROBLEM_LOG = 20
         const val LIVE_UNCERTAIN = "A conexão falhou durante a digitação. Confira o texto no PC; o campo recomeçou vazio."

@@ -19,6 +19,16 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Identificador do ícone embutido pelo `build.rs`.
 pub const ICON_ID: u16 = 1;
 
+/// Parte da identidade conferida a olho no pareamento: 16 caracteres (64 bits) em grupos de quatro.
+/// O app Android mostra o mesmo código a partir do certificado que o PC apresenta.
+pub fn check_code(fingerprint: &str) -> String {
+    let short: Vec<char> = fingerprint.chars().take(16).collect();
+    short
+        .chunks(4)
+        .map(|group| group.iter().collect::<String>().to_uppercase())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
 pub fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
@@ -269,6 +279,11 @@ mod tests {
         let last = encrypted.len() - 1;
         encrypted[last] ^= 1;
         assert!(protect(&encrypted, true).is_err());
+    }
+    #[test]
+    fn check_code_is_the_first_sixteen_identity_characters_in_groups() {
+        let fingerprint = format!("ab12cd34ef567890{}", "0".repeat(48));
+        assert_eq!(check_code(&fingerprint), "AB12 CD34 EF56 7890");
     }
     #[test]
     fn startup_entry_roundtrip_follows_the_current_command() {
