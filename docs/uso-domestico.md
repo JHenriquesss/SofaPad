@@ -1,11 +1,13 @@
 # Como usar o SofaPad
 
-Agente Windows 0.3.7 e APK Android 0.3.8 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
+Agente Windows 0.3.9 e APK Android 0.3.9 de desenvolvimento: o fluxo está implementado e o teste em celular físico está em andamento; o aceite doméstico ainda está pendente.
 
 ## Preparar o PC
 
-1. Coloque `SofaPad-agent-0.3.7.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
-2. Abra o programa. O ícone SofaPad aparece perto do relógio; pode estar dentro da seta de ícones ocultos. O build release não abre console.
+1. Coloque `SofaPad-agent-0.3.9.exe` numa pasta permanente do seu usuário, por exemplo `Documentos\SofaPad`. Não precisa executar como administrador.
+2. Abra o programa. O ícone do SofaPad (um sofá azul) aparece perto do relógio; pode estar dentro da seta de ícones ocultos. Passe o mouse sobre ele para ver a versão. O build release não abre console.
+   - **Para atualizar, basta abrir o arquivo novo:** ele fecha o SofaPad que estava aberto, assume o lugar e passa a iniciar com o Windows. Não é preciso escolher `Sair` antes.
+   - `Status` mostra a versão, o arquivo em uso e se o início automático aponta para ele.
 3. Se o Windows perguntar sobre firewall, permita somente na sua rede **privada/doméstica**. Não abra portas no roteador. PC e celular precisam estar na mesma rede; Wi-Fi de convidados pode impedir a conexão.
 4. Pelo ícone, abra `Status` para ver o endereço do PC. Depois escolha `Parear celular`.
 
@@ -53,6 +55,15 @@ Em outro computador, faça um novo pareamento. Não copie a pasta privada de cre
 ## Se não conectar
 
 Confira se o agente está aberto, os dois aparelhos estão na mesma rede e o firewall permite o programa na rede privada. Confira `Status` no PC e `Tentar novamente` no celular. Se a identidade mudou por reinstalação/perda do registro privado, esqueça o PC no celular e repita o pareamento presencial.
+
+Com o PC conectado, o topo do app mostra a versão do agente (`PC conectado · agente 0.3.9`). Se o agente do PC for mais antigo do que o app precisa, aparece um aviso em vermelho pedindo para abrir no PC o arquivo novo.
+
+Quando algo falha, o app mostra o motivo em vermelho logo abaixo do estado da conexão, no topo da tela. Os últimos avisos, com hora, ficam em `Configurações`, em `Problemas recentes da conexão`; uma captura dessa lista ajuda a relatar um defeito. Os avisos mais comuns:
+
+- **O PC recusou um comando:** o Windows não aceitou a tecla ou o clique. Confira se o antivírus bloqueou o SofaPad, se há uma janela de administrador em primeiro plano e se alguma tecla Ctrl, Shift, Alt ou Windows está presa no PC. Depois de três recusas em 20 segundos o app para de reconectar e mostra `Tentar novamente`.
+- **O SofaPad do PC não entendeu um comando:** o agente do PC é mais antigo que o app. Atualize o agente.
+- **O PC demorou a responder** ou **os comandos chegaram em rajada:** Wi-Fi fraco ou PC ocupado. Aproxime-se do roteador.
+- **O PC está em uso por outro celular:** só um celular controla por vez.
 
 O script opcional `scripts/liberar-sofapad.cmd` solicita uma autorização do Windows e prepara regras apenas para o SofaPad na rede privada local. Consulte [firewall e diagnóstico de rede](firewall-e-rede.md). Se o Firewall do Windows já estiver desligado, adicionar a regra não explica nem resolve por si só uma falha de acesso.
 

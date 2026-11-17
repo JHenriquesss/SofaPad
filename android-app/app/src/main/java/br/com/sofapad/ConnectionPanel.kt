@@ -37,6 +37,7 @@ fun ConnectionPanel(simulator: Simulator) {
     if (saved != null) {
         Text("Autorização salva neste celular. Ao abrir o app, a conexão é automática na mesma rede Wi-Fi.", fontSize = 13.sp)
         Text("Endereço conhecido: ${saved.host}:${saved.port}", fontSize = 12.sp)
+        simulator.state.agentVersion?.let { Text("SofaPad do PC: ${it.ifEmpty { "versão antiga, anterior à 0.3.9" }}", fontSize = 12.sp) }
         OutlinedButton(onClick = { simulator.paired(saved); simulator.show(Screen.CONTROL) }, enabled = !busy) { Text("Conectar ao PC salvo") }
     } else {
         Text("Nenhum PC autorizado neste celular. Complete o pareamento abaixo para controlar o Windows.", fontSize = 13.sp)
@@ -85,5 +86,11 @@ fun ConnectionPanel(simulator: Simulator) {
     if (simulator.state.remoteMode) {
         OutlinedButton(onClick = { simulator.reconnect() }, enabled = !simulator.state.textPending && !busy) { Text("Tentar novamente") }
         OutlinedButton(onClick = { simulator.simulation() }, enabled = !busy) { Text("Desconectar e usar simulação") }
+    }
+    if (simulator.problemLog.isNotEmpty()) {
+        HorizontalDivider()
+        Text("Problemas recentes da conexão", style = MaterialTheme.typography.titleMedium)
+        Text("Do mais novo para o mais antigo. Envie uma captura desta lista ao relatar um defeito.", fontSize = 12.sp)
+        simulator.problemLog.forEach { Text(it, fontSize = 12.sp) }
     }
 }

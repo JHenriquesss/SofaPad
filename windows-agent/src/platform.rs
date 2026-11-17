@@ -9,22 +9,33 @@ use windows_sys::Win32::{
         CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
     },
     Storage::FileSystem::{MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW},
+    System::LibraryLoader::GetModuleHandleW,
     System::Registry::*,
-    UI::WindowsAndMessaging::MessageBoxW,
+    UI::WindowsAndMessaging::{MB_ICONMASK, MB_USERICON, MSGBOXPARAMSW, MessageBoxIndirectW},
 };
+
+/// Versão deste executável, mostrada na bandeja, nas janelas e ao celular.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Identificador do ícone embutido pelo `build.rs`.
+pub const ICON_ID: u16 = 1;
 
 pub fn wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect()
 }
 pub fn dialog(text: &str, flags: u32) -> i32 {
-    unsafe {
-        MessageBoxW(
-            ptr::null_mut(),
-            wide(text).as_ptr(),
-            wide("SofaPad").as_ptr(),
-            flags,
-        )
+    let (text, caption) = (wide(text), wide(&format!("SofaPad {VERSION}")));
+    let mut parameters: MSGBOXPARAMSW = unsafe { std::mem::zeroed() };
+    parameters.cbSize = std::mem::size_of::<MSGBOXPARAMSW>() as u32;
+    parameters.lpszText = text.as_ptr();
+    parameters.lpszCaption = caption.as_ptr();
+    parameters.dwStyle = flags;
+    // Sem ícone de erro/aviso pedido, a janela mostra o sofá do SofaPad.
+    if flags & MB_ICONMASK == 0 {
+        parameters.hInstance = unsafe { GetModuleHandleW(ptr::null()) };
+        parameters.lpszIcon = ICON_ID as usize as *const u16;
+        parameters.dwStyle |= MB_USERICON;
     }
+    unsafe { MessageBoxIndirectW(&parameters) }
 }
 pub fn protect(bytes: &[u8], decrypt: bool) -> io::Result<Vec<u8>> {
     if bytes.len() > 131072 {
@@ -152,6 +163,14 @@ fn read_run(name: &str) -> Option<String> {
 }
 pub fn startup_enabled() -> bool {
     read_run(RUN_VALUE).is_some()
+}
+/// Estado do início automático para a janela de Status, dizendo se aponta para este arquivo.
+pub fn startup_summary() -> String {
+    match (read_run(RUN_VALUE), startup_command()) {
+        (None, _) => "desativado".into(),
+        (Some(current), Ok(expected)) if current == expected => "ativado (este arquivo)".into(),
+        (Some(current), _) => format!("ativado, mas aponta para outro arquivo: {current}"),
+    }
 }
 pub fn set_startup(enabled: bool) -> io::Result<()> {
     let command = if enabled {

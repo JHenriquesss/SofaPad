@@ -49,11 +49,43 @@ pub fn start() -> io::Result<()> {
     if mutex.is_null() {
         return Err(io::Error::last_os_error());
     }
+    let mut mutex = mutex;
     if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+        // Abrir este arquivo com outro SofaPad aberto (muitas vezes uma versão antiga) troca
+        // o que está rodando por este. Antes, a abertura era ignorada em silêncio.
         unsafe {
             CloseHandle(mutex);
         }
-        return Ok(());
+        crate::tray::close_running_instance();
+        let mut replaced = false;
+        for _ in 0..50 {
+            std::thread::sleep(Duration::from_millis(100));
+            mutex = unsafe {
+                CreateMutexW(
+                    std::ptr::null(),
+                    0,
+                    wide("Local\\SofaPadHousehold").as_ptr(),
+                )
+            };
+            if mutex.is_null() {
+                return Err(io::Error::last_os_error());
+            }
+            if unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
+                replaced = true;
+                break;
+            }
+            unsafe {
+                CloseHandle(mutex);
+            }
+        }
+        if !replaced {
+            dialog(
+                "Já existe um SofaPad aberto neste PC e ele não fechou sozinho.\n\nClique no ícone do SofaPad perto do relógio, escolha Sair e abra este arquivo de novo.",
+                windows_sys::Win32::UI::WindowsAndMessaging::MB_OK
+                    | windows_sys::Win32::UI::WindowsAndMessaging::MB_ICONWARNING,
+            );
+            return Ok(());
+        }
     }
     let result = run();
     unsafe {

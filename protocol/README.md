@@ -28,8 +28,10 @@ Payload total máximo: 8192 bytes; limite de 240 comandos por janela de um segun
 Na abertura, o agente envia:
 
 ```json
-{"v":1,"type":"hello","mode":"simulation","authorized":false,"max_text_bytes":4096,"idle_timeout_ms":3000}
+{"v":1,"type":"hello","mode":"simulation","authorized":false,"max_text_bytes":4096,"idle_timeout_ms":3000,"agent":"0.3.9"}
 ```
+
+`agent` é a versão do agente (desde a 0.3.9). O app trata a ausência do campo como agente antigo e avisa a pessoa; campos desconhecidos do `hello` são ignorados pelo app.
 
 Comando aceito recebe `{"v":1,"type":"ack","seq":1,"mode":"simulation"}`; `ping` recebe `pong` no lugar de `ack`. `ack` confirma que a simulação tratou a mensagem, sem afirmar entrada real no PC. Erros retornam somente código fixo, sem ecoar texto ou dados privados. O cliente de desenvolvimento deve enviar heartbeat ao menos uma vez por segundo quando não houver comandos. O app Android envia cada comando assim que ele acontece, soma movimentos enquanto houver muitos comandos sem confirmação e mantém no máximo cerca de 180 comandos por segundo, abaixo do limite do agente.
 

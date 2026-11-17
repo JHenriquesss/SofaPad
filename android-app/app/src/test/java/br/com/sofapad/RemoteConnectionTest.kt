@@ -172,18 +172,55 @@ class RemoteConnectionTest {
             }
             override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
         }))
-        val connection = RemoteConnection({ states.offer(it) }, {}, { uncertain.offer(true) })
+        val problems = LinkedBlockingQueue<LinkProblem>()
+        val connection = RemoteConnection({ states.offer(it) }, {}, { uncertain.offer(true) }, { problems.offer(it) })
         try {
             connection.connect(ConnectionSettings("127.0.0.1", server.port, fingerprint, token))
             awaitState(states, LinkState.READY)
             assertTrue(connection.submit(Command.Text("em janela elevada")))
             assertEquals(true, uncertain.poll(5, TimeUnit.SECONDS))
+            assertEquals("o motivo da recusa chega à interface", LinkProblem.INPUT, problems.poll(5, TimeUnit.SECONDS))
             awaitState(states, LinkState.RECONNECTING)
             awaitState(states, LinkState.READY)
             assertFalse(states.contains(LinkState.REJECTED))
 
             assertTrue(connection.submit(Command.Key(Shortcut.ESC)))
-            awaitState(states, LinkState.REJECTED)
+            // Comando que o PC não entende (agente antigo): para, sem culpar a identidade.
+            awaitState(states, LinkState.BLOCKED)
+            assertEquals(LinkProblem.PROTOCOL, problems.poll(5, TimeUnit.SECONDS))
+        } finally { connection.close(); server.close() }
+    }
+
+    @Test fun repeatedRefusalsStopReconnectingAndManualRetryStartsOver() {
+        val (server, fingerprint) = tlsServer()
+        val states = LinkedBlockingQueue<LinkState>()
+        val problems = LinkedBlockingQueue<LinkProblem>()
+        fun refusing() = MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) { webSocket.send("""{"v":1,"type":"hello","mode":"control","authorized":true}""") }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                webSocket.send("""{"v":1,"type":"error","code":"INPUT_ERROR"}""")
+                webSocket.close(1000, null)
+            }
+            override fun onClosing(webSocket: WebSocket, code: Int, reason: String) { webSocket.close(code, null) }
+        })
+        repeat(4) { server.enqueue(refusing()) }
+        val agents = LinkedBlockingQueue<String>()
+        val connection = RemoteConnection({ states.offer(it) }, {}, {}, { problems.offer(it) }, { agents.offer(it) })
+        try {
+            connection.connect(ConnectionSettings("127.0.0.1", server.port, fingerprint, token))
+            assertEquals("hello sem versão: agente antigo", "", agents.poll(5, TimeUnit.SECONDS))
+            repeat(3) {
+                awaitState(states, LinkState.READY)
+                assertTrue(connection.submit(Command.Key(Shortcut.ENTER)))
+                assertEquals(LinkProblem.INPUT, problems.poll(5, TimeUnit.SECONDS))
+            }
+            // Três recusas seguidas: para em vez de reconectar em silêncio.
+            awaitState(states, LinkState.BLOCKED)
+            assertFalse(connection.submit(Command.Move(1f, 1f)))
+            connection.reconnect()
+            awaitState(states, LinkState.READY)
+            assertTrue(connection.submit(Command.Key(Shortcut.ENTER)))
+            awaitState(states, LinkState.RECONNECTING)
         } finally { connection.close(); server.close() }
     }
 }
